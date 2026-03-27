@@ -18,6 +18,7 @@ import zipfile
 from io import BytesIO
 from datetime import datetime
 import traceback
+import random
 
 # Import des agents
 try:
@@ -196,36 +197,103 @@ def get_templates():
     ]
     return jsonify({"templates": templates})
 
+# ========== CHAT AMÉLIORÉ ==========
+
 @app.route('/api/chat', methods=['POST'])
 def chat():
     data = request.get_json()
     message = data.get('message', '').lower()
     
-    # Utiliser le dictionnaire pour comprendre
-    understanding = dictionary.understand(message)
+    # ========== COMMANDES SPÉCIALES ==========
     
-    # Si c'est une demande d'apprentissage
-    if understanding["intent"] == "learn":
+    # Commande pour voir le dictionnaire
+    if message == "montre ton dictionnaire" or message == "dictionnaire" or message == "vocabulaire":
+        stats = dictionary.get_stats()
+        response = f"📖 **Mon dictionnaire :**\n\n"
+        response += f"• {stats['total_words']} mots appris\n"
+        response += f"• {stats['total_expressions']} expressions\n"
+        response += f"• {stats['total_categories']} catégories\n\n"
+        response += f"**Catégories :** {', '.join(stats['categories_list'])}\n\n"
+        response += f"**Mots :** {', '.join(dictionary.get_all_words()[:10])}\n\n"
+        response += f"💡 Pour m'apprendre un mot : `/learn mot [mot]`"
+        return jsonify({"type": "message", "response": response})
+    
+    # Commande pour apprendre un mot
+    if message.startswith("/learn mot"):
+        parts = message.replace("/learn mot", "").strip().split()
+        if parts:
+            word = parts[0]
+            meaning = " ".join(parts[1:]) if len(parts) > 1 else word
+            success, msg = dictionary.learn_word(word, "general", meaning)
+            return jsonify({"type": "message", "response": msg})
+        else:
+            return jsonify({"type": "message", "response": "📝 Utilisation : `/learn mot [mot] [signification]`"})
+    
+    # Commande pour apprendre une expression
+    if message.startswith("/learn expression"):
+        expr = message.replace("/learn expression", "").strip()
+        if expr:
+            success, msg = dictionary.learn_expression(expr, expr)
+            return jsonify({"type": "message", "response": msg})
+        else:
+            return jsonify({"type": "message", "response": "📝 Utilisation : `/learn expression [phrase]`"})
+    
+    # Commande pour apprendre une catégorie
+    if message.startswith("/learn categorie"):
+        parts = message.replace("/learn categorie", "").strip().split()
+        if len(parts) >= 2:
+            category = parts[0]
+            keywords = parts[1:]
+            success, msg = dictionary.learn_category(category, keywords)
+            return jsonify({"type": "message", "response": msg})
+        else:
+            return jsonify({"type": "message", "response": "📝 Utilisation : `/learn categorie [nom] [mot-clé1 mot-clé2 ...]`"})
+    
+    # ========== CONVERSATION NORMALE ==========
+    
+    # Salutations
+    greetings = ["bonjour", "salut", "hello", "coucou", "hey", "yo"]
+    if any(g in message for g in greetings):
+        responses = [
+            "👋 Bonjour ! Comment puis-je t'aider aujourd'hui ?",
+            "🌟 Salut ! Je suis ORVIA, prêt à créer des applications pour toi !",
+            "🎨 Coucou ! Tu veux créer une application ?"
+        ]
+        return jsonify({"type": "message", "response": random.choice(responses)})
+    
+    # Questions sur ORVIA
+    if "qui es-tu" in message or "présente-toi" in message or "c'est quoi orvia" in message:
         return jsonify({
             "type": "message",
-            "response": "📚 **Apprenons ensemble !**\n\nDis-moi ce que tu veux m'apprendre :\n• `/learn mot [mot]` - Pour apprendre un nouveau mot\n• `/learn expression [phrase]` - Pour apprendre une expression\n• `/learn categorie [nom] [mots-clés]` - Pour apprendre une catégorie\n\nOu donne-moi simplement un nouveau mot à apprendre !"
+            "response": "🤖 **Je suis ORVIA** - L'intelligence qui crée des applications !\n\n"
+                        "J'ai 7 agents à mon service :\n"
+                        "• 🔮 VISION - Planifie ton projet\n"
+                        "• ✨ ARTISAN - Écrit le code\n"
+                        "• 🛡️ SENTINEL - Vérifie la sécurité\n"
+                        "• ⚖️ JUDGE - Teste la qualité\n"
+                        "• 🎨 DESIGNER - Crée l'interface\n"
+                        "• 🧠 MÉMOIRE - Se souvient de tout\n"
+                        "• 📚 DICTIONNAIRE - Apprend de nouveaux mots\n\n"
+                        "💡 Dis-moi ce que tu veux créer !"
         })
     
-    # Si c'est une demande de dictionnaire
-    if understanding["intent"] == "dictionary":
-        stats = dictionary.get_stats()
+    # Questions sur les fonctionnalités
+    if "fonctionnalité" in message or "sais faire" in message or "compétences" in message:
         return jsonify({
             "type": "message",
-            "response": f"📖 **Mon dictionnaire :**\n\n• {stats['total_words']} mots appris\n• {stats['total_expressions']} expressions\n• {stats['total_categories']} catégories\n\nCatégories: {', '.join(stats['categories_list'])}\n\nPour apprendre un nouveau mot, dis : `/learn mot [votre mot]`"
+            "response": "✨ **Mes fonctionnalités :**\n\n"
+                        "• 🚀 Créer des applications web (sites, API, blogs, e-commerce...)\n"
+                        "• 🧠 Apprendre de nouveaux mots et expressions\n"
+                        "• 📁 Sauvegarder tous tes projets\n"
+                        "• 🎨 Appliquer des designs modernes (Glassmorphism, Dark mode...)\n"
+                        "• 🔒 Sécuriser avec authentification JWT\n"
+                        "• 📱 Générer des applications React Native (Expo)\n\n"
+                        "💡 Essaie : 'crée un site portfolio'"
         })
     
     # Détection d'intention de création
-    creation_keywords = [
-        "crée", "creer", "génère", "genere", "fais", "fabrique", "site", "app",
-        "application", "créer", "générer", "fabrication", "création", "veux", "veut",
-        "aimerais", "aimerait", "faire", "fais moi", "construire", "développe",
-        "développer", "lance", "lancer", "démarrer", "demarre", "start"
-    ]
+    creation_keywords = ["crée", "creer", "génère", "genere", "fais", "fabrique", "site", "app",
+                         "application", "créer", "générer", "veux", "aimerais", "faire", "construire"]
     if any(kw in message for kw in creation_keywords) and len(message) > 5:
         idea = message
         for kw in creation_keywords:
@@ -239,7 +307,7 @@ def chat():
             })
     
     # Mots-clés pour mémoire
-    if "projet" in message and ("liste" in message or "mémoire" in message or "montre" in message or "mes" in message):
+    if "projet" in message and ("liste" in message or "mémoire" in message or "montre" in message):
         projects = memory.get_projects_list()
         if projects:
             response = "🧠 **Tes projets :**\n\n"
@@ -251,34 +319,26 @@ def chat():
             return jsonify({"type": "message", "response": "📭 Tu n'as pas encore de projets. Dis 'crée un site...' pour commencer !"})
     
     # Demande de templates
-    if "template" in message or "modèle" in message or "exemple" in message:
+    if "template" in message or "modèle" in message:
         return jsonify({
             "type": "message",
-            "response": "🎨 **Templates disponibles :**\n\n• ecommerce - Boutique en ligne\n• portfolio - Portfolio artistique\n• blog - Blog personnel\n• todo - Liste de tâches\n• comptabilite - Site comptable\n\n👉 Tape /template [nom] pour l'utiliser"
+            "response": "🎨 **Templates disponibles :**\n\n"
+                        "• ecommerce - Boutique en ligne\n"
+                        "• portfolio - Portfolio artistique\n"
+                        "• blog - Blog personnel\n"
+                        "• todo - Liste de tâches\n"
+                        "• comptabilite - Site comptable\n\n"
+                        "👉 Tape /template [nom] pour l'utiliser"
         })
     
-    # Apprentissage
-    if "apprend" in message or "tendance" in message:
-        stats = planner.get_statistics()
-        response = f"🌐 **Ce que j'ai appris :**\n\n"
-        response += f"📊 {stats['total_analyses']} projets analysés\n"
-        response += f"🎯 Types populaires : {', '.join(list(stats['project_types'].keys())[:3])}\n"
-        if stats.get('common_features'):
-            response += f"✨ Fonctionnalités courantes : {', '.join([f[0] for f in stats['common_features'][:3]])}"
-        return jsonify({"type": "message", "response": response})
-    
-    # Salutations
-    if any(g in message for g in ["bonjour", "salut", "hello", "coucou", "hey"]):
-        return jsonify({
-            "type": "message",
-            "response": "👋 Bonjour ! Je suis ORVIA, ton assistant IA. Dis-moi ce que tu veux créer !"
-        })
-    
-    # Réponse par défaut
-    return jsonify({
-        "type": "message",
-        "response": f"👋 {message}\n\n💡 Pour créer une app, dis 'crée [idée]' ou '/generate [idée]'"
-    })
+    # Réponse par défaut pour les conversations normales
+    default_responses = [
+        f"👋 {message}\n\n💡 Pour créer une application, dis 'crée [idée]'",
+        f"✨ Je t'écoute ! {message}\n\nDis-moi ce que tu veux créer !",
+        f"😊 {message}\n\nVeux-tu que je crée une application pour toi ?",
+        f"🎨 Intéressant ! {message}\n\nSi tu veux créer une app, dis-moi !"
+    ]
+    return jsonify({"type": "message", "response": random.choice(default_responses)})
 
 @app.route('/api/download/<project_id>', methods=['GET'])
 def download_project(project_id):
@@ -353,7 +413,6 @@ def learn_recommend():
 
 @app.route('/api/dictionary/learn', methods=['POST'])
 def learn_word():
-    """Apprend un nouveau mot"""
     data = request.get_json()
     word = data.get('word', '')
     category = data.get('category', 'general')
@@ -371,7 +430,6 @@ def learn_word():
 
 @app.route('/api/dictionary/expression', methods=['POST'])
 def learn_expression():
-    """Apprend une expression"""
     data = request.get_json()
     expression = data.get('expression', '')
     meaning = data.get('meaning', '')
@@ -388,7 +446,6 @@ def learn_expression():
 
 @app.route('/api/dictionary/category', methods=['POST'])
 def learn_category():
-    """Apprend une catégorie de projet"""
     data = request.get_json()
     category = data.get('category', '')
     keywords = data.get('keywords', [])
@@ -405,12 +462,10 @@ def learn_category():
 
 @app.route('/api/dictionary/stats', methods=['GET'])
 def dictionary_stats():
-    """Retourne les statistiques du dictionnaire"""
     return jsonify(dictionary.get_stats())
 
 @app.route('/api/dictionary/words', methods=['GET'])
 def dictionary_words():
-    """Retourne tous les mots appris"""
     return jsonify({
         "words": dictionary.get_all_words(),
         "total": len(dictionary.get_all_words())
@@ -418,7 +473,6 @@ def dictionary_words():
 
 @app.route('/api/dictionary/understand', methods=['POST'])
 def understand_text():
-    """Analyse le texte et retourne l'intention"""
     data = request.get_json()
     text = data.get('text', '')
     
