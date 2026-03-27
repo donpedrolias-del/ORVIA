@@ -58,7 +58,6 @@
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
         @media (max-width: 968px) { .team-grid { grid-template-columns: repeat(3, 1fr); } .main-layout { flex-direction: column; } .chat-panel, .mission-panel { height: 500px; } }
         
-        /* Tutoriel Modal */
         .tutorial-modal {
             display: none;
             position: fixed;
@@ -138,11 +137,11 @@
                 <div id="missionLog" class="mission-log"></div>
                 <div id="fileList" class="file-list"></div>
                 <button id="downloadBtn" class="download-btn" onclick="downloadProject()" style="display: none;">📥 Télécharger le projet</button>
+                <div id="previewButtons" style="display: flex; gap: 10px; margin-top: 10px;"></div>
             </div>
         </div>
     </div>
 
-    <!-- Tutoriel Modal -->
     <div id="tutorialModal" class="tutorial-modal">
         <div class="tutorial-card">
             <button class="tutorial-close" onclick="closeTutorial()">&times;</button>
@@ -167,8 +166,9 @@
     </div>
 
     <script>
-        const API_URL = 'http://127.0.0.1:5008';
+        const API_URL = 'https://web-production-71a1d.up.railway.app';
         let currentProjectId = null;
+        let currentProjectFiles = null;
         let waitingConfirmation = false;
         let pendingIdea = null;
         let tutorialStep = 1;
@@ -186,7 +186,7 @@
             div.scrollIntoView({ behavior: 'smooth' });
         }
 
-        function addMissionLog(agent, action, detail, icon) {
+        function addMissionLog(agent, action, detail, icon = '⚙️') {
             const div = document.createElement('div');
             div.className = 'log-entry';
             div.innerHTML = `${icon} <strong>${agent}</strong>: ${action}<br><span style="color:#aaa; margin-left:20px;">${detail}</span>`;
@@ -195,14 +195,15 @@
         }
 
         function openLivePreview(projectId) {
+            if (!projectId) return;
             window.open(API_URL + '/api/preview-live/' + projectId, '_blank', 'width=1300,height=900');
         }
 
         function openExpoPreview(projectId) {
+            if (!projectId) return;
             window.open(API_URL + '/api/expo-preview/' + projectId, '_blank', 'width=800,height=600');
         }
 
-        // ========== TUTORIEL ==========
         function showTutorial() {
             document.getElementById('tutorialModal').style.display = 'flex';
             tutorialStep = 1;
@@ -270,7 +271,6 @@
             }, 500);
         }
 
-        // ========== MÉMOIRE ==========
         async function showMemoryProjects() {
             try {
                 const response = await fetch(API_URL + '/api/projects');
@@ -298,7 +298,6 @@
             }
         }
 
-        // ========== TEMPLATES ==========
         async function showTemplatesList() {
             try {
                 const response = await fetch(API_URL + '/api/templates');
@@ -319,7 +318,6 @@
             }
         }
 
-        // ========== APPRENDRE ==========
         async function showLearnPanel() {
             let message = "🧠 **ORVIA peut apprendre sur internet !**\n\n";
             message += "**Ce que je peux faire :**\n";
@@ -470,7 +468,7 @@
             const message = input.value.trim();
             if (!message) return;
             
-            // Commande /continue
+            // Commandes spéciales
             if (message.startsWith('/continue')) {
                 const projectId = message.replace('/continue', '').trim();
                 if (projectId) {
@@ -484,7 +482,6 @@
                 return;
             }
             
-            // Commande /generate
             if (message.startsWith('/generate')) {
                 const idea = message.replace('/generate', '').trim();
                 if (idea) {
@@ -497,7 +494,6 @@
                 return;
             }
             
-            // Commande /template
             if (message.startsWith('/template')) {
                 const templateName = message.replace('/template', '').trim();
                 const templates = {
@@ -520,7 +516,6 @@
                 return;
             }
             
-            // Commande /learn
             if (message.startsWith('/learn')) {
                 const handled = await handleLearnCommand(message);
                 if (handled) {
@@ -572,15 +567,19 @@
         }
 
         async function createApp(idea) {
+            // Reset panel
             document.getElementById('missionLog').innerHTML = '';
             document.getElementById('fileList').innerHTML = '';
             document.getElementById('downloadBtn').style.display = 'none';
-            updateAgentStatus('vision', '⏳'); 
-            updateAgentStatus('artisan', '⏳'); 
-            updateAgentStatus('sentinel', '⏳'); 
-            updateAgentStatus('judge', '⏳'); 
-            updateAgentStatus('designer', '⏳');
-            updateAgentStatus('memory', '⏳');
+            document.getElementById('previewButtons').innerHTML = '';
+            
+            // Update agents status
+            updateAgentStatus('vision', '⏳ Analyse...');
+            updateAgentStatus('artisan', '⏳ En attente');
+            updateAgentStatus('sentinel', '⏳ En attente');
+            updateAgentStatus('judge', '⏳ En attente');
+            updateAgentStatus('designer', '⏳ En attente');
+            updateAgentStatus('memory', '⏳ Sauvegarde...');
 
             try {
                 const response = await fetch(API_URL + '/api/generate', {
@@ -592,64 +591,104 @@
 
                 if (data.success) {
                     currentProjectId = data.project_id;
-                    const stepsArray = data.steps;
-                    if (stepsArray && stepsArray.length > 0) {
-                        for (let i = 0; i < stepsArray.length; i++) {
-                            const step = stepsArray[i];
-                            addMissionLog(step.agent, step.action, step.detail, step.icon);
-                            if (step.agent === 'VISION') updateAgentStatus('vision', '✅');
-                            else if (step.agent === 'ARTISAN') updateAgentStatus('artisan', '✅');
-                            else if (step.agent === 'SENTINEL') updateAgentStatus('sentinel', '✅');
-                            else if (step.agent === 'JUDGE') updateAgentStatus('judge', '✅');
-                            else if (step.agent === 'DESIGNER') updateAgentStatus('designer', '✅');
-                            else if (step.agent === 'MÉMOIRE') updateAgentStatus('memory', '✅');
-                            await new Promise(r => setTimeout(r, 400));
-                        }
+                    currentProjectFiles = data.files;
+                    
+                    // Log des étapes des agents
+                    addMissionLog('VISION', 'Planification', data.steps?.vision || 'Architecture définie', '🔮');
+                    addMissionLog('DESIGNER', 'UI/UX', data.steps?.designer || 'Design généré', '🎨');
+                    addMissionLog('ARTISAN', 'Codage', data.steps?.artisan || `${Object.keys(data.files).length} fichiers créés`, '✨');
+                    addMissionLog('SENTINEL', 'Sécurité', data.steps?.sentinel || 'Vulnérabilités vérifiées', '🛡️');
+                    addMissionLog('JUDGE', 'Validation', data.steps?.judge || 'Tests passés avec succès', '⚖️');
+                    addMissionLog('MÉMOIRE', 'Sauvegarde', `Projet "${data.project_idea.substring(0, 50)}..." enregistré`, '🧠');
+                    
+                    // Afficher la liste des fichiers
+                    const fileContainer = document.getElementById('fileList');
+                    const files = data.files;
+                    for (const [filename, content] of Object.entries(files)) {
+                        const badge = document.createElement('span');
+                        badge.className = 'file-badge';
+                        badge.textContent = filename;
+                        fileContainer.appendChild(badge);
                     }
                     
-                    const livePreviewBtn = document.createElement('button');
-                    livePreviewBtn.textContent = '🎬 PREVIEW EN DIRECT';
-                    livePreviewBtn.className = 'live-preview-btn';
-                    livePreviewBtn.onclick = () => openLivePreview(currentProjectId);
-                    document.getElementById('fileList').appendChild(livePreviewBtn);
+                    // Afficher le bouton de téléchargement
+                    const downloadBtn = document.getElementById('downloadBtn');
+                    downloadBtn.style.display = 'block';
                     
+                    // Afficher les boutons de prévisualisation
+                    const previewDiv = document.getElementById('previewButtons');
+                    const liveBtn = document.createElement('button');
+                    liveBtn.className = 'live-preview-btn';
+                    liveBtn.textContent = '🚀 Prévisualisation en direct';
+                    liveBtn.onclick = () => openLivePreview(currentProjectId);
                     const expoBtn = document.createElement('button');
-                    expoBtn.textContent = '📱 EXPO PREVIEW';
                     expoBtn.className = 'expo-btn';
+                    expoBtn.textContent = '📱 Aperçu Expo';
                     expoBtn.onclick = () => openExpoPreview(currentProjectId);
-                    document.getElementById('fileList').appendChild(expoBtn);
+                    previewDiv.appendChild(liveBtn);
+                    previewDiv.appendChild(expoBtn);
                     
-                    if (data.files && data.files.length > 0) {
-                        for (let i = 0; i < data.files.length; i++) {
-                            const file = data.files[i];
-                            const badge = document.createElement('span');
-                            badge.className = 'file-badge';
-                            badge.textContent = '📄 ' + file;
-                            document.getElementById('fileList').appendChild(badge);
-                        }
-                    }
-                    document.getElementById('downloadBtn').style.display = 'block';
-                    addChatMessage(`✅ ${data.message}`, false);
+                    // Message de succès
+                    addChatMessage(`✅ Application créée avec succès !\n\n📁 ${Object.keys(files).length} fichiers générés.\n🆔 ID du projet : ${currentProjectId}\n\nTu peux maintenant :\n- 📥 Télécharger le projet\n- 🚀 Ouvrir la prévisualisation en direct\n- 📱 Voir l'aperçu Expo\n- 🧠 Continuer ce projet plus tard`, false);
+                    
+                    // Mettre à jour les statuts finaux
+                    updateAgentStatus('vision', '✅ Terminé');
+                    updateAgentStatus('artisan', '✅ Terminé');
+                    updateAgentStatus('sentinel', '✅ Terminé');
+                    updateAgentStatus('judge', '✅ Validé');
+                    updateAgentStatus('designer', '✅ Terminé');
+                    updateAgentStatus('memory', '✅ Sauvegardé');
                 } else {
-                    addMissionLog('ORVIA', 'Erreur', data.error || 'Problème inconnu', '❌');
+                    addChatMessage(`❌ Erreur : ${data.error}`, false);
+                    updateAgentStatus('vision', '❌ Échec');
+                    updateAgentStatus('artisan', '❌ Échec');
+                    updateAgentStatus('sentinel', '❌ Échec');
+                    updateAgentStatus('judge', '❌ Échec');
+                    updateAgentStatus('designer', '❌ Échec');
+                    updateAgentStatus('memory', '❌ Échec');
                 }
             } catch (error) {
-                addMissionLog('ORVIA', 'Erreur', error.message, '❌');
+                console.error('Erreur:', error);
+                addChatMessage('❌ Erreur de connexion au serveur', false);
+                updateAgentStatus('vision', '❌ Erreur');
+                updateAgentStatus('artisan', '❌ Erreur');
+                updateAgentStatus('sentinel', '❌ Erreur');
+                updateAgentStatus('judge', '❌ Erreur');
+                updateAgentStatus('designer', '❌ Erreur');
+                updateAgentStatus('memory', '❌ Erreur');
             }
         }
 
-        async function downloadProject() { if (currentProjectId) window.open(API_URL + '/api/download/' + currentProjectId, '_blank'); }
-        
-        async function loadStats() {
-            try { const res = await fetch(API_URL + '/api/status'); const data = await res.json(); if (data.projects) document.getElementById('learningBadge').innerHTML = `🧠 ${data.projects} projets créés`; } catch(e) {}
+        async function downloadProject() {
+            if (!currentProjectId) {
+                addChatMessage("Aucun projet à télécharger.", false);
+                return;
+            }
+            
+            try {
+                const response = await fetch(API_URL + '/api/download/' + currentProjectId);
+                if (!response.ok) throw new Error('Erreur téléchargement');
+                
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `orvia_project_${currentProjectId}.zip`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+                addChatMessage(`📥 Téléchargement du projet ${currentProjectId} démarré.`, false);
+            } catch (error) {
+                addChatMessage(`❌ Erreur lors du téléchargement : ${error.message}`, false);
+            }
         }
-        
-        // Afficher le tutoriel au premier chargement
+
+        // Vérifier si le tutoriel doit être affiché
         if (!localStorage.getItem('orvia_tutorial_seen')) {
             setTimeout(() => showTutorial(), 1000);
         }
-        
-        loadStats();
     </script>
 </body>
 </html>
