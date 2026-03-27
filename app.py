@@ -356,7 +356,7 @@ def learn_recommend():
 # ========== LANCEMENT ==========
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5002))
+    port = int(os.environ.get('PORT', 8080))
     print("\n" + "="*60)
     print("🚀 ORVIA API - Tous les agents sont prêts !")
     print("="*60)
