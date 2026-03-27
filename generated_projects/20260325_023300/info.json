@@ -1,0 +1,10 @@
+{
+  "id": "20260325_023300",
+  "idea": "site de comptabilit\u00e9 avec accueil information d\u00e9veloppement",
+  "created_at": "2026-03-25T02:33:00.876809",
+  "files": [
+    "backend.py",
+    "index.html",
+    "requirements.txt"
+  ]
+}

@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ORVIA - L'IA qui crée des applications</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: white;
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .container { max-width: 1400px; margin: 0 auto; }
+        .header { text-align: center; margin-bottom: 40px; animation: fadeIn 0.8s ease-out; }
+        .logo { font-size: 4rem; font-weight: 800; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .tagline { font-size: 1.2rem; opacity: 0.8; margin-top: 10px; }
+        .learning-badge { background: rgba(74,222,128,0.2); border: 1px solid #4ade80; border-radius: 20px; padding: 5px 12px; font-size: 0.8rem; display: inline-block; margin-top: 10px; }
+        .team-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 20px; margin-bottom: 40px; }
+        .agent-card { background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-radius: 20px; padding: 20px; text-align: center; border: 1px solid rgba(255,255,255,0.2); transition: all 0.3s; }
+        .agent-card:hover { transform: translateY(-5px); background: rgba(255,255,255,0.2); }
+        .agent-icon { font-size: 2.5rem; }
+        .agent-name { font-size: 1.3rem; font-weight: 600; margin: 10px 0 5px; }
+        .agent-role { font-size: 0.8rem; opacity: 0.7; }
+        .agent-status { margin-top: 10px; font-size: 0.8rem; color: #4ade80; }
+        .main-layout { display: flex; gap: 30px; flex-wrap: wrap; }
+        .chat-panel { flex: 2; background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-radius: 30px; padding: 30px; height: 600px; display: flex; flex-direction: column; border: 1px solid rgba(255,255,255,0.2); }
+        .mission-panel { flex: 1; background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-radius: 30px; padding: 30px; height: 600px; display: flex; flex-direction: column; border: 1px solid rgba(255,255,255,0.2); }
+        .chat-header { margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.2); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .chat-header h2 { font-size: 1.5rem; display: flex; align-items: center; gap: 10px; }
+        .memory-btn, .template-btn, .learn-btn { color: white; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 14px; }
+        .memory-btn { background: #9b59b6; }
+        .memory-btn:hover { background: #8e44ad; }
+        .template-btn { background: #28a745; }
+        .template-btn:hover { background: #218838; }
+        .learn-btn { background: #17a2b8; }
+        .learn-btn:hover { background: #138496; }
+        .chat-messages { flex: 1; overflow-y: auto; margin-bottom: 20px; padding: 10px; }
+        .message { margin-bottom: 15px; animation: fadeIn 0.3s ease; }
+        .user-message { text-align: right; }
+        .user-message .bubble { background: linear-gradient(135deg, #667eea, #764ba2); display: inline-block; padding: 10px 15px; border-radius: 20px; max-width: 80%; }
+        .orvia-message .bubble { background: rgba(255,255,255,0.2); display: inline-block; padding: 10px 15px; border-radius: 20px; max-width: 80%; }
+        .chat-input { display: flex; gap: 10px; }
+        .chat-input input { flex: 1; padding: 12px; border-radius: 25px; border: none; font-size: 16px; }
+        .chat-input button { background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; padding: 12px 24px; border-radius: 25px; cursor: pointer; }
+        .mission-log { flex: 1; overflow-y: auto; font-family: monospace; font-size: 0.8rem; }
+        .log-entry { padding: 8px 0; border-left: 3px solid #667eea; padding-left: 10px; margin: 5px 0; animation: fadeIn 0.3s ease; }
+        .file-list { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.2); align-items: center; }
+        .file-badge { background: rgba(255,255,255,0.2); padding: 5px 12px; border-radius: 20px; font-size: 0.8rem; font-family: monospace; }
+        .download-btn, .preview-btn, .live-preview-btn, .expo-btn { border: none; padding: 10px 20px; border-radius: 25px; font-weight: 600; cursor: pointer; margin-top: 10px; width: 100%; }
+        .download-btn { background: #4ade80; color: #1a1a2e; }
+        .preview-btn { background: #f59e0b; color: #1a1a2e; }
+        .live-preview-btn { background: #dc3545; color: white; animation: pulse 1s infinite; }
+        .expo-btn { background: #28a745; color: white; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+        @media (max-width: 968px) { .team-grid { grid-template-columns: repeat(3, 1fr); } .main-layout { flex-direction: column; } .chat-panel, .mission-panel { height: 500px; } }
+        
+        /* Tutoriel Modal */
+        .tutorial-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .tutorial-card {
+            background: white;
+            border-radius: 30px;
+            max-width: 500px;
+            width: 90%;
+            padding: 30px;
+            color: #333;
+            position: relative;
+            animation: fadeIn 0.3s ease;
+        }
+        .tutorial-close {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #999;
+        }
+        .tutorial-close:hover { color: #333; }
+        .template-buttons { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px; }
+        .template-buttons button { background: #667eea; color: white; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; }
+        .template-buttons button:hover { background: #764ba2; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">⚡ ORVIA</div>
+            <div class="tagline">L'intelligence qui voit au-delà du code</div>
+            <div class="learning-badge" id="learningBadge">🧠 Apprentissage en cours...</div>
+        </div>
+
+        <div class="team-grid">
+            <div class="agent-card"><div class="agent-icon">🔮</div><div class="agent-name">VISION</div><div class="agent-role">Stratège • Planificateur</div><div class="agent-status" id="visionStatus">Prêt</div></div>
+            <div class="agent-card"><div class="agent-icon">✨</div><div class="agent-name">ARTISAN</div><div class="agent-role">Créateur • Codeur</div><div class="agent-status" id="artisanStatus">Prêt</div></div>
+            <div class="agent-card"><div class="agent-icon">🛡️</div><div class="agent-name">SENTINEL</div><div class="agent-role">Protecteur • Débogueur</div><div class="agent-status" id="sentinelStatus">Prêt</div></div>
+            <div class="agent-card"><div class="agent-icon">⚖️</div><div class="agent-name">JUDGE</div><div class="agent-role">Validateur • Testeur</div><div class="agent-status" id="judgeStatus">Prêt</div></div>
+            <div class="agent-card"><div class="agent-icon">🎨</div><div class="agent-name">DESIGNER</div><div class="agent-role">Créateur • UI/UX</div><div class="agent-status" id="designerStatus">Prêt</div></div>
+            <div class="agent-card"><div class="agent-icon">🧠</div><div class="agent-name">MÉMOIRE</div><div class="agent-role">Souvenirs • Contexte</div><div class="agent-status" id="memoryStatus">Actif</div></div>
+        </div>
+
+        <div class="main-layout">
+            <div class="chat-panel">
+                <div class="chat-header">
+                    <h2>💬 Discussion avec ORVIA</h2>
+                    <div>
+                        <button class="memory-btn" onclick="showMemoryProjects()">🧠 MÉMOIRE</button>
+                        <button class="template-btn" onclick="showTemplatesList()">🎨 TEMPLATES</button>
+                        <button class="learn-btn" onclick="showLearnPanel()">🌐 APPRENDRE</button>
+                    </div>
+                </div>
+                <div class="chat-messages" id="chatMessages">
+                    <div class="message orvia-message"><div class="bubble">🧠 Bonjour ! Je suis ORVIA. Dis-moi ce que tu veux créer !<br><br>💡 Astuce : utilise /generate [idée] pour créer une application<br>🧠 Clique sur MÉMOIRE pour voir tes projets<br>🎨 Clique sur TEMPLATES pour des modèles<br>🌐 Clique sur APPRENDRE pour que j'apprenne sur internet !</div></div>
+                </div>
+                <div class="chat-input">
+                    <input type="text" id="messageInput" placeholder="Parle avec ORVIA..." onkeypress="if(event.key==='Enter') sendMessage()">
+                    <button onclick="sendMessage()">Envoyer</button>
+                </div>
+            </div>
+
+            <div class="mission-panel">
+                <div class="chat-header"><h2>🏆 Mission en cours</h2></div>
+                <div id="missionLog" class="mission-log"></div>
+                <div id="fileList" class="file-list"></div>
+                <button id="downloadBtn" class="download-btn" onclick="downloadProject()" style="display: none;">📥 Télécharger le projet</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tutoriel Modal -->
+    <div id="tutorialModal" class="tutorial-modal">
+        <div class="tutorial-card">
+            <button class="tutorial-close" onclick="closeTutorial()">&times;</button>
+            <h2 id="tutorialTitle" style="color: #667eea; margin-bottom: 15px;">Bienvenue sur ORVIA ! 🎉</h2>
+            <div id="tutorialContent">
+                <p>ORVIA est une IA qui crée des applications web sur demande !</p>
+                <p style="margin-top: 10px;">✨ Voici ce que tu peux faire :</p>
+                <ul style="margin-left: 20px; margin-top: 10px;">
+                    <li>📝 <strong>/generate [idée]</strong> - Créer une application</li>
+                    <li>🧠 <strong>continue le projet 1</strong> - Reprendre un projet</li>
+                    <li>🌐 <strong>/learn trends design</strong> - ORVIA apprend sur internet</li>
+                    <li>🎨 <strong>/template ecommerce</strong> - Utiliser un modèle prêt</li>
+                </ul>
+                <p style="margin-top: 15px;">Prêt à commencer ?</p>
+            </div>
+            <div id="tutorialButtons" style="margin-top: 20px; display: flex; gap: 10px;">
+                <button onclick="closeTutorial()" style="background: #667eea; color: white; border: none; padding: 10px 20px; border-radius: 25px; cursor: pointer;">Commencer</button>
+                <button onclick="showTemplates()" style="background: #9b59b6; color: white; border: none; padding: 10px 20px; border-radius: 25px; cursor: pointer;">Voir les templates</button>
+            </div>
+            <div id="tutorialStep" style="margin-top: 15px; font-size: 12px; color: #999; text-align: center;">Étape 1/5</div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://127.0.0.1:5008';
+        let currentProjectId = null;
+        let waitingConfirmation = false;
+        let pendingIdea = null;
+        let tutorialStep = 1;
+
+        function updateAgentStatus(agent, status) {
+            const el = document.getElementById(agent + 'Status');
+            if (el) el.textContent = status;
+        }
+
+        function addChatMessage(text, isUser) {
+            const div = document.createElement('div');
+            div.className = 'message ' + (isUser ? 'user-message' : 'orvia-message');
+            div.innerHTML = `<div class="bubble">${text.replace(/\n/g, '<br>')}</div>`;
+            document.getElementById('chatMessages').appendChild(div);
+            div.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function addMissionLog(agent, action, detail, icon) {
+            const div = document.createElement('div');
+            div.className = 'log-entry';
+            div.innerHTML = `${icon} <strong>${agent}</strong>: ${action}<br><span style="color:#aaa; margin-left:20px;">${detail}</span>`;
+            document.getElementById('missionLog').appendChild(div);
+            div.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function openLivePreview(projectId) {
+            window.open(API_URL + '/api/preview-live/' + projectId, '_blank', 'width=1300,height=900');
+        }
+
+        function openExpoPreview(projectId) {
+            window.open(API_URL + '/api/expo-preview/' + projectId, '_blank', 'width=800,height=600');
+        }
+
+        // ========== TUTORIEL ==========
+        function showTutorial() {
+            document.getElementById('tutorialModal').style.display = 'flex';
+            tutorialStep = 1;
+            updateTutorial();
+        }
+
+        function closeTutorial() {
+            document.getElementById('tutorialModal').style.display = 'none';
+            localStorage.setItem('orvia_tutorial_seen', 'true');
+        }
+
+        function nextTutorialStep() {
+            tutorialStep++;
+            if (tutorialStep > 5) {
+                closeTutorial();
+            } else {
+                updateTutorial();
+            }
+        }
+
+        function updateTutorial() {
+            const titles = {
+                1: "🎉 Bienvenue sur ORVIA !",
+                2: "💬 Parle-moi normalement",
+                3: "🚀 Crée ta première application",
+                4: "🧠 Continue tes projets",
+                5: "🎨 Utilise les templates"
+            };
+            const contents = {
+                1: "<p>ORVIA est une IA qui crée des applications web complètes !</p><p style='margin-top:10px'>Avec mon équipe de 6 agents, je peux générer :</p><ul style='margin-left:20px; margin-top:10px'><li>📊 Sites de comptabilité</li><li>🛒 Boutiques en ligne</li><li>🎨 Portfolios</li><li>📝 Blogs</li><li>✨ Et bien plus !</li></ul>",
+                2: "<p>Tu peux me parler normalement !</p><p style='margin-top:10px'><strong>Exemples :</strong></p><ul style='margin-left:20px; margin-top:10px'><li>👋 'Bonjour ORVIA'</li><li>📋 'Montre moi mes projets'</li><li>🚀 'Crée un site de comptabilité'</li><li>🧠 'Continue le projet 1'</li></ul>",
+                3: "<p>Pour créer une application, utilise la commande :</p><div style='background:#f0f0f0; padding:10px; border-radius:10px; margin:15px 0; font-family:monospace'>/generate site de comptabilité avec 3 pages</div><p>Ou dis-moi simplement : <strong>'crée un site e-commerce'</strong></p>",
+                4: "<p>Tous tes projets sont sauvegardés !</p><p style='margin-top:10px'>Pour continuer un projet :</p><ul style='margin-left:20px; margin-top:10px'><li>🔘 Clique sur <strong>🧠 MÉMOIRE</strong></li><li>📝 Tape <strong>/continue [ID]</strong></li><li>💬 Dis <strong>'continue le projet 1'</strong></li></ul>",
+                5: "<p>Utilise les templates pour démarrer plus vite !</p><div class='template-buttons'><button onclick='useTemplate(\"ecommerce\")'>🛒 E-commerce</button><button onclick='useTemplate(\"comptabilite\")'>📊 Comptabilité</button><button onclick='useTemplate(\"portfolio\")'>🎨 Portfolio</button><button onclick='useTemplate(\"blog\")'>📝 Blog</button><button onclick='useTemplate(\"todo\")'>📋 Todo List</button></div>"
+            };
+            document.getElementById('tutorialTitle').innerHTML = titles[tutorialStep];
+            document.getElementById('tutorialContent').innerHTML = contents[tutorialStep];
+            document.getElementById('tutorialStep').innerHTML = `Étape ${tutorialStep}/5`;
+            
+            const buttons = document.getElementById('tutorialButtons');
+            if (tutorialStep < 5) {
+                buttons.innerHTML = `<button onclick="nextTutorialStep()" style="background: #667eea; color: white; border: none; padding: 10px 20px; border-radius: 25px; cursor: pointer;">Suivant →</button>`;
+            } else {
+                buttons.innerHTML = `<button onclick="closeTutorial()" style="background: #667eea; color: white; border: none; padding: 10px 20px; border-radius: 25px; cursor: pointer;">Commencer</button>`;
+            }
+        }
+
+        function showTemplates() {
+            closeTutorial();
+            setTimeout(() => showTemplatesList(), 300);
+        }
+
+        function useTemplate(type) {
+            closeTutorial();
+            let templateIdea = "";
+            if (type === "ecommerce") templateIdea = "site e-commerce complet avec catalogue, panier, catégories et authentification";
+            if (type === "comptabilite") templateIdea = "site de comptabilité avec accueil, informations, développement et graphiques";
+            if (type === "portfolio") templateIdea = "portfolio photographe avec galerie, formulaire de contact et page à propos";
+            if (type === "blog") templateIdea = "blog personnel avec articles, commentaires et catégories";
+            if (type === "todo") templateIdea = "application de gestion de tâches avec catégories, priorités, recherche et authentification";
+            
+            setTimeout(() => {
+                addChatMessage(`🚀 Je crée un ${type} pour toi !`, false);
+                createApp(templateIdea);
+            }, 500);
+        }
+
+        // ========== MÉMOIRE ==========
+        async function showMemoryProjects() {
+            try {
+                const response = await fetch(API_URL + '/api/projects');
+                const data = await response.json();
+                const projects = data.projects;
+                
+                if (projects.length === 0) {
+                    addChatMessage("📭 Tu n'as pas encore créé de projet. Utilise /generate pour en créer un !", false);
+                    return;
+                }
+                
+                let message = "🧠 **Choisis un projet à continuer :**\n\n";
+                for (let i = 0; i < Math.min(projects.length, 10); i++) {
+                    const p = projects[i];
+                    const date = new Date(p.created_at).toLocaleString();
+                    message += `**${i+1}. ${p.idea.substring(0, 60)}**\n`;
+                    message += `   📅 ${date}\n`;
+                    message += `   🆔 ID: ${p.id}\n`;
+                    message += `   🔧 Pour continuer, dis: "continue le projet ${i+1}" ou "/continue ${p.id}"\n\n`;
+                }
+                message += "💡 Tu peux aussi dire 'continue le projet 1' ou 'reprends mon application'";
+                addChatMessage(message, false);
+            } catch(e) {
+                addChatMessage("❌ Erreur lors du chargement des projets", false);
+            }
+        }
+
+        // ========== TEMPLATES ==========
+        async function showTemplatesList() {
+            try {
+                const response = await fetch(API_URL + '/api/templates');
+                const data = await response.json();
+                const templates = data.templates;
+                
+                let message = "🎨 **Templates disponibles :**\n\n";
+                for (let i = 0; i < templates.length; i++) {
+                    const t = templates[i];
+                    message += `${i+1}. **${t.name}**\n`;
+                    message += `   ${t.description}\n`;
+                    message += `   💡 Tape: /template ${t.id}\n\n`;
+                }
+                message += "✨ Utilise /template [nom] pour créer une application !";
+                addChatMessage(message, false);
+            } catch(e) {
+                addChatMessage("❌ Erreur lors du chargement des templates", false);
+            }
+        }
+
+        // ========== APPRENDRE ==========
+        async function showLearnPanel() {
+            let message = "🧠 **ORVIA peut apprendre sur internet !**\n\n";
+            message += "**Ce que je peux faire :**\n";
+            message += "📊 **Voir les tendances** - `/learn trends design`\n";
+            message += "🔍 **Analyser un site** - `/learn analyze https://...`\n";
+            message += "💡 **Recommander un design** - `/learn recommend ecommerce`\n";
+            message += "📚 **Apprendre un texte** - `/learn text [votre texte]`\n\n";
+            message += "🌐 **Tendances actuelles :**\n";
+            
+            try {
+                const response = await fetch(API_URL + '/api/learn/trends?category=design');
+                const data = await response.json();
+                if (data.trends && data.trends.design) {
+                    message += "🎨 " + data.trends.design.slice(0, 5).join(", ") + "\n";
+                }
+                message += `\n📊 ORVIA a appris ${data.stats?.total_learned || 0} chose(s) !`;
+            } catch(e) {
+                message += "🎨 Glassmorphism, Neumorphism, Dark mode, Minimalist, Brutalist\n";
+            }
+            
+            addChatMessage(message, false);
+        }
+
+        async function handleLearnCommand(message) {
+            const msg = message.toLowerCase();
+            
+            if (msg.startsWith('/learn trends')) {
+                const category = msg.replace('/learn trends', '').trim() || 'design';
+                addChatMessage(`🔍 ORVIA cherche les tendances en ${category}...`, false);
+                try {
+                    const response = await fetch(API_URL + '/api/learn/trends?category=' + category);
+                    const data = await response.json();
+                    let result = `📊 **Tendances ${category} :**\n\n`;
+                    if (data.trends) {
+                        for (let key in data.trends) {
+                            result += `**${key}** : ${data.trends[key].join(', ')}\n\n`;
+                        }
+                    }
+                    result += `🧠 ORVIA a appris ${data.stats?.total_learned || 0} chose(s) !`;
+                    addChatMessage(result, false);
+                } catch(e) {
+                    addChatMessage("❌ Erreur lors de la recherche", false);
+                }
+                return true;
+            }
+            
+            if (msg.startsWith('/learn analyze')) {
+                const url = msg.replace('/learn analyze', '').trim();
+                if (url) {
+                    addChatMessage(`🔍 Analyse de ${url}...`, false);
+                    try {
+                        const response = await fetch(API_URL + '/api/learn', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url: url })
+                        });
+                        const data = await response.json();
+                        if (data.success && data.results.analysis) {
+                            const a = data.results.analysis;
+                            addChatMessage(`✅ Analyse terminée !\n\n📄 ${a.url}\n🎨 Design: ${a.design}\n💻 Technologies: ${a.technologies.join(', ')}\n⚡ Performance: ${a.performance}`, false);
+                        } else {
+                            addChatMessage("❌ Analyse échouée", false);
+                        }
+                    } catch(e) {
+                        addChatMessage("❌ Erreur", false);
+                    }
+                } else {
+                    addChatMessage("💡 Utilise : /learn analyze [url]", false);
+                }
+                return true;
+            }
+            
+            if (msg.startsWith('/learn recommend')) {
+                const project_type = msg.replace('/learn recommend', '').trim() || 'generic';
+                addChatMessage(`💡 ORVIA cherche les meilleures recommandations pour ${project_type}...`, false);
+                try {
+                    const response = await fetch(API_URL + '/api/learn/recommend', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ project_type: project_type })
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        const r = data.recommendations;
+                        addChatMessage(`🎨 **Recommandations ORVIA pour ${project_type} :**\n\n🎨 Design: ${r.design}\n🎨 Couleurs: ${r.colors.join(', ')}\n✨ Fonctionnalités: ${r.features.join(', ')}\n\n🧠 Basé sur l'apprentissage d'ORVIA !`, false);
+                    }
+                } catch(e) {
+                    addChatMessage("❌ Erreur", false);
+                }
+                return true;
+            }
+            
+            if (msg.startsWith('/learn text')) {
+                const text = msg.replace('/learn text', '').trim();
+                if (text) {
+                    addChatMessage(`📚 ORVIA apprend...`, false);
+                    try {
+                        const response = await fetch(API_URL + '/api/learn', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ text: text })
+                        });
+                        const data = await response.json();
+                        if (data.success && data.results.learning) {
+                            addChatMessage(`✅ ORVIA a appris ${data.results.learning.learned} chose(s) !\n📝 Nouveaux mots: ${data.results.learning.words?.join(', ') || 'aucun'}`, false);
+                        }
+                    } catch(e) {
+                        addChatMessage("❌ Erreur", false);
+                    }
+                } else {
+                    addChatMessage("💡 Utilise : /learn text [ce que tu veux m'apprendre]", false);
+                }
+                return true;
+            }
+            
+            return false;
+        }
+
+        async function continueProject(projectId) {
+            try {
+                const response = await fetch(API_URL + '/api/continue', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ project_id: projectId })
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    addChatMessage(`✅ ${data.message}`, false);
+                    addChatMessage(`📂 Dossier: generated_projects/${projectId}`, false);
+                    addChatMessage(`🚀 Pour lancer l'application:`, false);
+                    addChatMessage(`   cd generated_projects/${projectId} && python3 backend.py`, false);
+                    addChatMessage(`   puis ouvrir index.html dans ton navigateur`, false);
+                    addChatMessage(`📝 Tu peux aussi me demander d'ajouter des fonctionnalités !`, false);
+                    
+                    currentProjectId = projectId;
+                    pendingIdea = data.project.idea;
+                } else {
+                    addChatMessage(`❌ ${data.error}`, false);
+                }
+            } catch(e) {
+                addChatMessage("❌ Erreur lors du chargement", false);
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            if (!message) return;
+            
+            // Commande /continue
+            if (message.startsWith('/continue')) {
+                const projectId = message.replace('/continue', '').trim();
+                if (projectId) {
+                    addChatMessage(`🔧 Chargement du projet ${projectId}...`, false);
+                    continueProject(projectId);
+                } else {
+                    addChatMessage("💡 Utilise : /continue [ID_du_projet] ou dis 'continue le projet 1'", false);
+                    showMemoryProjects();
+                }
+                input.value = '';
+                return;
+            }
+            
+            // Commande /generate
+            if (message.startsWith('/generate')) {
+                const idea = message.replace('/generate', '').trim();
+                if (idea) {
+                    addChatMessage("🚀 Génération directe lancée !", false);
+                    createApp(idea);
+                } else {
+                    addChatMessage("💡 Utilise : /generate [idée]", false);
+                }
+                input.value = '';
+                return;
+            }
+            
+            // Commande /template
+            if (message.startsWith('/template')) {
+                const templateName = message.replace('/template', '').trim();
+                const templates = {
+                    "ecommerce": "site e-commerce complet avec catalogue produits, panier, catégories et authentification JWT",
+                    "comptabilite": "site de comptabilité avec accueil, informations, développement, graphiques de dépenses et authentification",
+                    "portfolio": "portfolio photographe avec galerie d'images, formulaire de contact, page à propos et design moderne",
+                    "blog": "blog personnel avec articles, commentaires, catégories et authentification admin",
+                    "todo": "application de gestion de tâches avec catégories, priorités, recherche et authentification"
+                };
+                if (templates[templateName]) {
+                    const idea = templates[templateName];
+                    addChatMessage(`🎨 Template '${templateName}' chargé !`, false);
+                    addChatMessage(`🔐 Créer : "${idea}" ? (oui/non)`, false);
+                    waitingConfirmation = true;
+                    pendingIdea = idea;
+                } else {
+                    addChatMessage("📁 Templates disponibles: ecommerce, comptabilite, portfolio, blog, todo", false);
+                }
+                input.value = '';
+                return;
+            }
+            
+            // Commande /learn
+            if (message.startsWith('/learn')) {
+                const handled = await handleLearnCommand(message);
+                if (handled) {
+                    input.value = '';
+                    return;
+                }
+            }
+            
+            addChatMessage(message, true);
+            input.value = '';
+
+            if (waitingConfirmation) {
+                if (message.toLowerCase() === 'oui') {
+                    addChatMessage("🚀 Lancement de la création !", false);
+                    createApp(pendingIdea);
+                    waitingConfirmation = false;
+                    pendingIdea = null;
+                } else if (message.toLowerCase() === 'non') {
+                    addChatMessage("🔒 Annulé.", false);
+                    waitingConfirmation = false;
+                    pendingIdea = null;
+                } else {
+                    addChatMessage("💡 Réponds par 'oui' ou 'non'", false);
+                }
+                return;
+            }
+
+            try {
+                const response = await fetch(API_URL + '/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: message })
+                });
+                const data = await response.json();
+
+                if (data.type === 'confirmation') {
+                    waitingConfirmation = true;
+                    pendingIdea = data.idea;
+                    addChatMessage(data.response, false);
+                } else if (data.type === 'continue') {
+                    addChatMessage(data.response, false);
+                    continueProject(data.project_id);
+                } else {
+                    addChatMessage(data.response, false);
+                }
+            } catch (error) {
+                addChatMessage('❌ Erreur de connexion', false);
+            }
+        }
+
+        async function createApp(idea) {
+            document.getElementById('missionLog').innerHTML = '';
+            document.getElementById('fileList').innerHTML = '';
+            document.getElementById('downloadBtn').style.display = 'none';
+            updateAgentStatus('vision', '⏳'); 
+            updateAgentStatus('artisan', '⏳'); 
+            updateAgentStatus('sentinel', '⏳'); 
+            updateAgentStatus('judge', '⏳'); 
+            updateAgentStatus('designer', '⏳');
+            updateAgentStatus('memory', '⏳');
+
+            try {
+                const response = await fetch(API_URL + '/api/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ idea: idea })
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    currentProjectId = data.project_id;
+                    const stepsArray = data.steps;
+                    if (stepsArray && stepsArray.length > 0) {
+                        for (let i = 0; i < stepsArray.length; i++) {
+                            const step = stepsArray[i];
+                            addMissionLog(step.agent, step.action, step.detail, step.icon);
+                            if (step.agent === 'VISION') updateAgentStatus('vision', '✅');
+                            else if (step.agent === 'ARTISAN') updateAgentStatus('artisan', '✅');
+                            else if (step.agent === 'SENTINEL') updateAgentStatus('sentinel', '✅');
+                            else if (step.agent === 'JUDGE') updateAgentStatus('judge', '✅');
+                            else if (step.agent === 'DESIGNER') updateAgentStatus('designer', '✅');
+                            else if (step.agent === 'MÉMOIRE') updateAgentStatus('memory', '✅');
+                            await new Promise(r => setTimeout(r, 400));
+                        }
+                    }
+                    
+                    const livePreviewBtn = document.createElement('button');
+                    livePreviewBtn.textContent = '🎬 PREVIEW EN DIRECT';
+                    livePreviewBtn.className = 'live-preview-btn';
+                    livePreviewBtn.onclick = () => openLivePreview(currentProjectId);
+                    document.getElementById('fileList').appendChild(livePreviewBtn);
+                    
+                    const expoBtn = document.createElement('button');
+                    expoBtn.textContent = '📱 EXPO PREVIEW';
+                    expoBtn.className = 'expo-btn';
+                    expoBtn.onclick = () => openExpoPreview(currentProjectId);
+                    document.getElementById('fileList').appendChild(expoBtn);
+                    
+                    if (data.files && data.files.length > 0) {
+                        for (let i = 0; i < data.files.length; i++) {
+                            const file = data.files[i];
+                            const badge = document.createElement('span');
+                            badge.className = 'file-badge';
+                            badge.textContent = '📄 ' + file;
+                            document.getElementById('fileList').appendChild(badge);
+                        }
+                    }
+                    document.getElementById('downloadBtn').style.display = 'block';
+                    addChatMessage(`✅ ${data.message}`, false);
+                } else {
+                    addMissionLog('ORVIA', 'Erreur', data.error || 'Problème inconnu', '❌');
+                }
+            } catch (error) {
+                addMissionLog('ORVIA', 'Erreur', error.message, '❌');
+            }
+        }
+
+        async function downloadProject() { if (currentProjectId) window.open(API_URL + '/api/download/' + currentProjectId, '_blank'); }
+        
+        async function loadStats() {
+            try { const res = await fetch(API_URL + '/api/status'); const data = await res.json(); if (data.projects) document.getElementById('learningBadge').innerHTML = `🧠 ${data.projects} projets créés`; } catch(e) {}
+        }
+        
+        // Afficher le tutoriel au premier chargement
+        if (!localStorage.getItem('orvia_tutorial_seen')) {
+            setTimeout(() => showTutorial(), 1000);
+        }
+        
+        loadStats();
+    </script>
+</body>
+</html>

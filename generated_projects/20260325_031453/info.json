@@ -1,0 +1,10 @@
+{
+  "id": "20260325_031453",
+  "idea": "site e-commerce avec catalogue produits, panier, paiement, dashboard vendeur",
+  "created_at": "2026-03-25T03:14:53.313873",
+  "files": [
+    "backend.py",
+    "index.html",
+    "requirements.txt"
+  ]
+}
