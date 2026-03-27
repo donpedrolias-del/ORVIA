@@ -27,6 +27,7 @@ try:
     from agents.debugger import Debugger
     from agents.tester import Tester
     from agents.memory import Memory
+    from agents.dictionary import Dictionary
     print("✅ Agents importés avec succès")
 except ImportError as e:
     print(f"❌ Erreur d'import: {e}")
@@ -44,6 +45,7 @@ designer = Designer()
 debugger = Debugger()
 tester = Tester()
 memory = Memory()
+dictionary = Dictionary()
 
 # Dossiers
 PROJECTS_DIR = "generated_projects"
@@ -59,7 +61,7 @@ def home():
         "name": "ORVIA API",
         "version": "2.0",
         "status": "online",
-        "agents": ["vision", "artisan", "sentinel", "judge", "designer", "memoire"]
+        "agents": ["vision", "artisan", "sentinel", "judge", "designer", "memoire", "dictionary"]
     })
 
 @app.route('/api/status', methods=['GET'])
@@ -77,8 +79,12 @@ def generate():
     print(f"🚀 Génération pour : {idea}")
     
     try:
+        # Utiliser le dictionnaire pour améliorer la détection
+        project_type = dictionary.detect_project_type(idea)
+        
         # 1. Planner crée le plan
         plan = planner.create_plan(idea)
+        plan['project_type'] = project_type
         
         # 2. Coder génère le code
         success, message = coder.generate_code(None, plan)
@@ -109,7 +115,7 @@ def generate():
             with open(html_path, 'r', encoding='utf-8') as f:
                 html_content = f.read()
             if "design" not in html_content.lower() and len(html_content) < 5000:
-                enhanced_html = designer.create_modern_interface(plan['project_type'], idea)
+                enhanced_html = designer.create_modern_interface(project_type, idea)
                 with open(html_path, 'w', encoding='utf-8') as f:
                     f.write(enhanced_html)
         
@@ -139,8 +145,8 @@ def generate():
             "project_idea": idea,
             "files": files,
             "steps": {
-                "vision": f"Plan créé - Type: {plan['project_type']}, Complexité: {plan['complexity']}/5",
-                "designer": f"Thème {designer.get_best_style(plan['project_type'])['name']} appliqué",
+                "vision": f"Plan créé - Type: {project_type}, Complexité: {plan['complexity']}/5",
+                "designer": f"Thème {designer.get_best_style(project_type)['name']} appliqué",
                 "artisan": f"{file_count} fichiers générés",
                 "sentinel": "Analyse de sécurité effectuée",
                 "judge": f"Score qualité: {tester.quality_score}/100",
@@ -195,7 +201,31 @@ def chat():
     data = request.get_json()
     message = data.get('message', '').lower()
     
-    creation_keywords = ["crée", "creer", "génère", "genere", "fais", "fabrique", "site", "app"]
+    # Utiliser le dictionnaire pour comprendre
+    understanding = dictionary.understand(message)
+    
+    # Si c'est une demande d'apprentissage
+    if understanding["intent"] == "learn":
+        return jsonify({
+            "type": "message",
+            "response": "📚 **Apprenons ensemble !**\n\nDis-moi ce que tu veux m'apprendre :\n• `/learn mot [mot]` - Pour apprendre un nouveau mot\n• `/learn expression [phrase]` - Pour apprendre une expression\n• `/learn categorie [nom] [mots-clés]` - Pour apprendre une catégorie\n\nOu donne-moi simplement un nouveau mot à apprendre !"
+        })
+    
+    # Si c'est une demande de dictionnaire
+    if understanding["intent"] == "dictionary":
+        stats = dictionary.get_stats()
+        return jsonify({
+            "type": "message",
+            "response": f"📖 **Mon dictionnaire :**\n\n• {stats['total_words']} mots appris\n• {stats['total_expressions']} expressions\n• {stats['total_categories']} catégories\n\nCatégories: {', '.join(stats['categories_list'])}\n\nPour apprendre un nouveau mot, dis : `/learn mot [votre mot]`"
+        })
+    
+    # Détection d'intention de création
+    creation_keywords = [
+        "crée", "creer", "génère", "genere", "fais", "fabrique", "site", "app",
+        "application", "créer", "générer", "fabrication", "création", "veux", "veut",
+        "aimerais", "aimerait", "faire", "fais moi", "construire", "développe",
+        "développer", "lance", "lancer", "démarrer", "demarre", "start"
+    ]
     if any(kw in message for kw in creation_keywords) and len(message) > 5:
         idea = message
         for kw in creation_keywords:
@@ -208,7 +238,8 @@ def chat():
                 "idea": idea
             })
     
-    if "projet" in message and ("liste" in message or "mémoire" in message):
+    # Mots-clés pour mémoire
+    if "projet" in message and ("liste" in message or "mémoire" in message or "montre" in message or "mes" in message):
         projects = memory.get_projects_list()
         if projects:
             response = "🧠 **Tes projets :**\n\n"
@@ -216,17 +247,37 @@ def chat():
                 response += f"• {p['idea'][:50]}... (ID: {p['id']})\n"
             response += "\n💡 Dis /continue [ID] pour reprendre"
             return jsonify({"type": "message", "response": response})
+        else:
+            return jsonify({"type": "message", "response": "📭 Tu n'as pas encore de projets. Dis 'crée un site...' pour commencer !"})
     
+    # Demande de templates
+    if "template" in message or "modèle" in message or "exemple" in message:
+        return jsonify({
+            "type": "message",
+            "response": "🎨 **Templates disponibles :**\n\n• ecommerce - Boutique en ligne\n• portfolio - Portfolio artistique\n• blog - Blog personnel\n• todo - Liste de tâches\n• comptabilite - Site comptable\n\n👉 Tape /template [nom] pour l'utiliser"
+        })
+    
+    # Apprentissage
     if "apprend" in message or "tendance" in message:
         stats = planner.get_statistics()
         response = f"🌐 **Ce que j'ai appris :**\n\n"
         response += f"📊 {stats['total_analyses']} projets analysés\n"
         response += f"🎯 Types populaires : {', '.join(list(stats['project_types'].keys())[:3])}\n"
+        if stats.get('common_features'):
+            response += f"✨ Fonctionnalités courantes : {', '.join([f[0] for f in stats['common_features'][:3]])}"
         return jsonify({"type": "message", "response": response})
     
+    # Salutations
+    if any(g in message for g in ["bonjour", "salut", "hello", "coucou", "hey"]):
+        return jsonify({
+            "type": "message",
+            "response": "👋 Bonjour ! Je suis ORVIA, ton assistant IA. Dis-moi ce que tu veux créer !"
+        })
+    
+    # Réponse par défaut
     return jsonify({
         "type": "message",
-        "response": f"👋 {message}\n\n💡 Pour créer une app, dis 'crée [idée]'"
+        "response": f"👋 {message}\n\n💡 Pour créer une app, dis 'crée [idée]' ou '/generate [idée]'"
     })
 
 @app.route('/api/download/<project_id>', methods=['GET'])
@@ -254,6 +305,13 @@ def preview_live(project_id):
         with open(html_path, 'r', encoding='utf-8') as f:
             return f.read(), 200, {'Content-Type': 'text/html'}
     return jsonify({"error": "Fichier non trouvé"}), 404
+
+@app.route('/api/expo-preview/<project_id>', methods=['GET'])
+def expo_preview(project_id):
+    return jsonify({
+        "message": "Preview Expo bientôt disponible",
+        "project_id": project_id
+    })
 
 @app.route('/api/learn/trends', methods=['GET'])
 def learn_trends():
@@ -291,15 +349,94 @@ def learn_recommend():
         }
     })
 
+# ========== ROUTES DU DICTIONNAIRE ==========
+
+@app.route('/api/dictionary/learn', methods=['POST'])
+def learn_word():
+    """Apprend un nouveau mot"""
+    data = request.get_json()
+    word = data.get('word', '')
+    category = data.get('category', 'general')
+    meaning = data.get('meaning', '')
+    
+    if not word:
+        return jsonify({"error": "Aucun mot fourni"}), 400
+    
+    success, message = dictionary.learn_word(word, category, meaning)
+    return jsonify({
+        "success": success,
+        "message": message,
+        "stats": dictionary.get_stats()
+    })
+
+@app.route('/api/dictionary/expression', methods=['POST'])
+def learn_expression():
+    """Apprend une expression"""
+    data = request.get_json()
+    expression = data.get('expression', '')
+    meaning = data.get('meaning', '')
+    
+    if not expression:
+        return jsonify({"error": "Aucune expression fournie"}), 400
+    
+    success, message = dictionary.learn_expression(expression, meaning)
+    return jsonify({
+        "success": success,
+        "message": message,
+        "stats": dictionary.get_stats()
+    })
+
+@app.route('/api/dictionary/category', methods=['POST'])
+def learn_category():
+    """Apprend une catégorie de projet"""
+    data = request.get_json()
+    category = data.get('category', '')
+    keywords = data.get('keywords', [])
+    
+    if not category:
+        return jsonify({"error": "Aucune catégorie fournie"}), 400
+    
+    success, message = dictionary.learn_category(category, keywords)
+    return jsonify({
+        "success": success,
+        "message": message,
+        "stats": dictionary.get_stats()
+    })
+
+@app.route('/api/dictionary/stats', methods=['GET'])
+def dictionary_stats():
+    """Retourne les statistiques du dictionnaire"""
+    return jsonify(dictionary.get_stats())
+
+@app.route('/api/dictionary/words', methods=['GET'])
+def dictionary_words():
+    """Retourne tous les mots appris"""
+    return jsonify({
+        "words": dictionary.get_all_words(),
+        "total": len(dictionary.get_all_words())
+    })
+
+@app.route('/api/dictionary/understand', methods=['POST'])
+def understand_text():
+    """Analyse le texte et retourne l'intention"""
+    data = request.get_json()
+    text = data.get('text', '')
+    
+    if not text:
+        return jsonify({"error": "Aucun texte fourni"}), 400
+    
+    result = dictionary.understand(text)
+    result["detected_type"] = dictionary.detect_project_type(text)
+    return jsonify(result)
+
 # ========== LANCEMENT ==========
 
 if __name__ == '__main__':
-    # Utiliser le port fourni par Railway (8080 par défaut)
     port = int(os.environ.get('PORT', 8080))
     print("\n" + "="*60)
     print("🚀 ORVIA API - Tous les agents sont prêts !")
     print("="*60)
     print(f"📡 Serveur sur http://0.0.0.0:{port}")
-    print("🤖 Agents: VISION, ARTISAN, SENTINEL, JUDGE, DESIGNER, MÉMOIRE")
+    print("🤖 Agents: VISION, ARTISAN, SENTINEL, JUDGE, DESIGNER, MÉMOIRE, DICTIONNAIRE")
     print("="*60)
     app.run(host='0.0.0.0', port=port, debug=True)
