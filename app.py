@@ -1,6 +1,5 @@
 """
-ORVIA - IA INTELLIGENTE
-Comprend les questions et les demandes de création
+ORVIA - IA INTELLIGENTE AVEC AUTO-CORRECTION
 """
 
 from flask import Flask, jsonify, request, send_file
@@ -27,6 +26,7 @@ DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 running_apps = {}
 
 def start_app_background(project_id, project_path):
+    """Démarre une application en arrière-plan"""
     backend_path = os.path.join(project_path, "backend.py")
     if not os.path.exists(backend_path):
         return False
@@ -117,6 +117,55 @@ CORS(app)
 GENERATED_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generated_projects")
 os.makedirs(GENERATED_DIR, exist_ok=True)
 
+# ========== AGENT AUTO-CORRECTEUR ==========
+class AutoCorrecteur:
+    def __init__(self):
+        self.corrections = []
+    
+    def detecter_et_corriger(self, error_log):
+        """Détecte l'erreur et propose/corrige automatiquement"""
+        
+        if "Address already in use" in error_log or "Port already in use" in error_log:
+            return {
+                "detected": "port_occupe",
+                "action": "changer_port",
+                "message": "🔧 Port occupé détecté. Changement automatique du port.",
+                "new_port": 5010
+            }
+        
+        if "ModuleNotFoundError" in error_log or "No module named" in error_log:
+            module = self._extraire_module(error_log)
+            return {
+                "detected": "module_manquant",
+                "action": "installer_module",
+                "message": f"📦 Module '{module}' manquant. Installation automatique.",
+                "module": module
+            }
+        
+        if "SyntaxError" in error_log:
+            return {
+                "detected": "erreur_syntaxe",
+                "action": "corriger_syntaxe",
+                "message": "🔧 Erreur de syntaxe détectée. Correction automatique."
+            }
+        
+        if "Connection refused" in error_log or "ERR_CONNECTION_REFUSED" in error_log:
+            return {
+                "detected": "api_offline",
+                "action": "redemarrer_api",
+                "message": "🔄 API hors ligne. Redémarrage automatique."
+            }
+        
+        return {"detected": "inconnu", "action": "rien", "message": "✅ Aucun problème détecté"}
+    
+    def _extraire_module(self, error_log):
+        match = re.search(r"No module named '(\w+)'", error_log)
+        if match:
+            return match.group(1)
+        return "unknown"
+
+auto_correcteur = AutoCorrecteur()
+
 # ========== VARIABLES DE CONFIRMATION ==========
 waiting_for_confirmation = False
 pending_idea = None
@@ -177,8 +226,8 @@ def chat():
         print(f"\n📨 Message: {message}")
         msg_lower = message.lower()
         
-        # ========== 1. GESTION DE LA CONFIRMATION ==========
-        if waiting_for_confirmation and msg_lower in ["oui", "yes", "ok", "o", "créé", "cree", "oui crée", "oui cree"]:
+        # Gestion de la confirmation
+        if waiting_for_confirmation and msg_lower in ["oui", "yes", "ok", "o", "créé", "cree"]:
             waiting_for_confirmation = False
             idea = pending_idea
             pending_idea = None
@@ -189,13 +238,12 @@ def chat():
                 "idea": idea
             })
         
-        if waiting_for_confirmation and msg_lower in ["non", "no", "n", "annule", "annuler"]:
+        if waiting_for_confirmation and msg_lower in ["non", "no", "n", "annule"]:
             waiting_for_confirmation = False
             pending_idea = None
             return jsonify({"type": "chat", "response": "🔒 Annulé."})
         
-        # ========== 2. COMMANDES SPÉCIALES ==========
-        
+        # Commandes spéciales
         if msg_lower.startswith('/template'):
             template_name = msg_lower.replace('/template', '').strip()
             templates = {
@@ -238,13 +286,11 @@ def chat():
             else:
                 return jsonify({"type": "chat", "response": "🌐 Utilise /learn trends ou /learn recommend"})
         
-        # ========== 3. DÉTECTION D'UNE DEMANDE DE CRÉATION ==========
+        # Détection création
         creation_keywords = ["crée", "créer", "fais-moi", "je veux", "génère", "construis", "fais", "site", "application", "app"]
         is_question = "?" in message or any(word in msg_lower for word in ["pourquoi", "comment", "quel", "quelle", "combien", "où", "quand", "qui", "est-ce"])
         
-        # Si c'est une demande de création ET que ce n'est pas une question
         if not is_question and any(word in msg_lower for word in creation_keywords):
-            # Extraire l'idée
             idea = message
             for word in ["crée", "créer", "fais-moi", "je veux", "génère", "construis", "une", "un", "application", "site", "fais", "moi"]:
                 if idea.lower().startswith(word):
@@ -261,7 +307,7 @@ def chat():
                 "idea": idea
             })
         
-        # ========== 4. CONVERSATION NORMALE ==========
+        # Conversation normale
         projects_count = len(memory_agent.get_projects_list())
         ai_response = get_orvia_response(message, projects_count)
         
@@ -376,7 +422,7 @@ button {{ background: #667eea; color: white; border: none; padding: 12px 24px; b
 </div>
 </div>
 <script>
-const API_URL='http://127.0.0.1:5002';let items=[];
+const API_URL='http://127.0.0.1:5008';let items=[];
 async function checkAPI(){{try{{const r=await fetch(API_URL+'/api/status');if(r.ok)document.getElementById('apiStatus').textContent='✅ Online';}}catch(e){{document.getElementById('apiStatus').textContent='❌ Offline';}}}}
 async function loadItems(){{try{{const r=await fetch(API_URL+'/api/items');const d=await r.json();items=d.items;document.getElementById('total').textContent=items.length;
 const c=document.getElementById('itemsList');if(items.length===0)c.innerHTML='<p style="text-align:center;">📭 Aucun élément</p>';
@@ -536,15 +582,63 @@ def get_recommendations():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ========== ROUTE AUTO-CORRECTION ==========
+
+@app.route('/api/auto-fix', methods=['POST'])
+def auto_fix():
+    """ORVIA se corrige automatiquement"""
+    try:
+        data = request.get_json()
+        error = data.get('error', '')
+        project_id = data.get('project_id', '')
+        
+        correction = auto_correcteur.detecter_et_corriger(error)
+        
+        if correction["action"] == "changer_port":
+            project_path = os.path.join(GENERATED_DIR, project_id)
+            backend_path = os.path.join(project_path, "backend.py")
+            
+            if os.path.exists(backend_path):
+                with open(backend_path, 'r') as f:
+                    content = f.read()
+                content = content.replace("port = int(os.environ.get('PORT', 5008))", 
+                                           f"port = int(os.environ.get('PORT', {correction['new_port']}))")
+                with open(backend_path, 'w') as f:
+                    f.write(content)
+                
+                start_app_background(project_id, project_path)
+                
+                return jsonify({
+                    "success": True,
+                    "message": correction["message"],
+                    "action": "port_changé",
+                    "new_port": correction["new_port"]
+                })
+        
+        elif correction["action"] == "installer_module":
+            result = subprocess.run(["pip3", "install", correction["module"]], capture_output=True)
+            if result.returncode == 0:
+                return jsonify({
+                    "success": True,
+                    "message": correction["message"],
+                    "action": "module_installé"
+                })
+        
+        return jsonify({
+            "success": True,
+            "message": correction["message"],
+            "action": correction["action"]
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5008))
     print("\n" + "="*60)
-    print("🏆 ORVIA - IA INTELLIGENTE")
+    print("🏆 ORVIA - AVEC AUTO-CORRECTION")
     print("="*60)
     print(f"🌐 http://localhost:{port}")
-    print("🧠 ORVIA comprend les questions et les demandes de création")
-    print("💬 Pose une question → il répond")
-    print("🚀 Dis 'crée un site' → il demande confirmation")
-    print("✅ Dis 'oui' → il crée l'application")
+    print("🔧 ORVIA peut se corriger automatiquement !")
     print("="*60 + "\n")
     app.run(host='0.0.0.0', port=port, debug=True)

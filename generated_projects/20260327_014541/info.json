@@ -1,0 +1,10 @@
+{
+  "id": "20260327_014541",
+  "idea": "Tu peux me cree un site web",
+  "created_at": "2026-03-27T01:45:41.512607",
+  "files": [
+    "backend.py",
+    "index.html",
+    "requirements.txt"
+  ]
+}
