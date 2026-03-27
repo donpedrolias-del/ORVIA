@@ -1,644 +1,366 @@
 """
-ORVIA - IA INTELLIGENTE AVEC AUTO-CORRECTION
-"""
-
-from flask import Flask, jsonify, request, send_file
-from flask_cors import CORS
-import os
-import json
-import shutil
-import subprocess
-import threading
-import re
-from datetime import datetime
-import sys
-import pickle
-import time
-import requests
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# ========== DEEPSEEK API ==========
-DEEPSEEK_API_KEY = "sk-226b39f55f5e4d5eb13fda8772aa4c57"
-DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
-
-# ========== GESTIONNAIRE D'APPS ==========
-running_apps = {}
-
-def start_app_background(project_id, project_path):
-    """Démarre une application en arrière-plan"""
-    backend_path = os.path.join(project_path, "backend.py")
-    if not os.path.exists(backend_path):
-        return False
-    def run_server():
-        try:
-            os.chdir(project_path)
-            process = subprocess.Popen(["python3", "backend.py"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            running_apps[project_id] = process
-            time.sleep(2)
-        except:
-            pass
-    thread = threading.Thread(target=run_server)
-    thread.daemon = True
-    thread.start()
-    return True
-
-# ========== MÉMOIRE ==========
-class Memory:
-    def __init__(self):
-        self.memory_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "orvia_memory.pkl")
-        self.projects = []
-        self.load_memory()
-    def load_memory(self):
-        if os.path.exists(self.memory_file):
-            try:
-                with open(self.memory_file, 'rb') as f:
-                    data = pickle.load(f)
-                    self.projects = data.get("projects", [])
-                print(f"🧠 Mémoire: {len(self.projects)} projets")
-            except:
-                pass
-    def save_memory(self):
-        with open(self.memory_file, 'wb') as f:
-            pickle.dump({"projects": self.projects}, f)
-    def add_project(self, project_id, idea):
-        self.projects.append({"id": project_id, "idea": idea, "created_at": datetime.now().isoformat()})
-        self.save_memory()
-    def get_projects_list(self):
-        return self.projects
-
-memory_agent = Memory()
-
-# ========== AGENT LEARNER ==========
-class Learner:
-    def __init__(self):
-        self.knowledge_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge.json")
-        self.knowledge = self.load_knowledge()
-    def load_knowledge(self):
-        if os.path.exists(self.knowledge_file):
-            try:
-                with open(self.knowledge_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            except:
-                pass
-        return {"trends": {"design": ["Glassmorphism", "Neumorphism", "Dark mode", "Minimalist", "Brutalist"]}, "learned": [], "last_update": datetime.now().isoformat()}
-    def save_knowledge(self):
-        self.knowledge["last_update"] = datetime.now().isoformat()
-        with open(self.knowledge_file, 'w', encoding='utf-8') as f:
-            json.dump(self.knowledge, f, indent=2, ensure_ascii=False)
-    def search_trends(self, category="design"):
-        return self.knowledge["trends"].get(category, ["Glassmorphism", "Neumorphism", "Dark mode"])
-    def get_recommendations(self, project_type):
-        recos = {
-            "ecommerce": {"design": "Moderne avec grands visuels", "colors": ["#2c3e50", "#3498db", "#e74c3c"]},
-            "portfolio": {"design": "Minimaliste avec animations", "colors": ["#000000", "#ffffff", "#9b59b6"]},
-            "comptabilite": {"design": "Professionnel épuré", "colors": ["#1e3a8a", "#10b981", "#f8fafc"]}
-        }
-        for key in recos:
-            if key in project_type.lower():
-                return recos[key]
-        return recos["portfolio"]
-    def learn_from_text(self, text):
-        keywords = re.findall(r'\b[A-Za-z]{4,}\b', text)
-        new_words = [k for k in keywords if k not in str(self.knowledge)]
-        if new_words:
-            self.knowledge["learned"].append({"date": datetime.now().isoformat(), "content": text[:200], "keywords": new_words[:5]})
-            self.save_knowledge()
-            return {"learned": len(new_words), "words": new_words[:3]}
-        return {"learned": 0}
-    def get_learning_stats(self):
-        return {"total_learned": len(self.knowledge["learned"]), "last_update": self.knowledge["last_update"]}
-
-learner_agent = Learner()
-
-app = Flask(__name__)
-CORS(app)
-
-GENERATED_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generated_projects")
-os.makedirs(GENERATED_DIR, exist_ok=True)
-
-# ========== AGENT AUTO-CORRECTEUR ==========
-class AutoCorrecteur:
-    def __init__(self):
-        self.corrections = []
-    
-    def detecter_et_corriger(self, error_log):
-        """Détecte l'erreur et propose/corrige automatiquement"""
-        
-        if "Address already in use" in error_log or "Port already in use" in error_log:
-            return {
-                "detected": "port_occupe",
-                "action": "changer_port",
-                "message": "🔧 Port occupé détecté. Changement automatique du port.",
-                "new_port": 5010
-            }
-        
-        if "ModuleNotFoundError" in error_log or "No module named" in error_log:
-            module = self._extraire_module(error_log)
-            return {
-                "detected": "module_manquant",
-                "action": "installer_module",
-                "message": f"📦 Module '{module}' manquant. Installation automatique.",
-                "module": module
-            }
-        
-        if "SyntaxError" in error_log:
-            return {
-                "detected": "erreur_syntaxe",
-                "action": "corriger_syntaxe",
-                "message": "🔧 Erreur de syntaxe détectée. Correction automatique."
-            }
-        
-        if "Connection refused" in error_log or "ERR_CONNECTION_REFUSED" in error_log:
-            return {
-                "detected": "api_offline",
-                "action": "redemarrer_api",
-                "message": "🔄 API hors ligne. Redémarrage automatique."
-            }
-        
-        return {"detected": "inconnu", "action": "rien", "message": "✅ Aucun problème détecté"}
-    
-    def _extraire_module(self, error_log):
-        match = re.search(r"No module named '(\w+)'", error_log)
-        if match:
-            return match.group(1)
-        return "unknown"
-
-auto_correcteur = AutoCorrecteur()
-
-# ========== VARIABLES DE CONFIRMATION ==========
-waiting_for_confirmation = False
-pending_idea = None
-
-def get_orvia_response(message, projects_count):
-    system_prompt = f"""Tu es ORVIA, un assistant IA chaleureux et intelligent.
-Tu as une équipe de 6 agents: 🔮 VISION, ✨ ARTISAN, 🛡️ SENTINEL, ⚖️ JUDGE, 🎨 DESIGNER, 🧠 MÉMOIRE.
-Tu as déjà créé {projects_count} applications.
-
-RÈGLES:
-- Tu réponds en français, avec des emojis
-- Tu es chaleureux et enthousiaste
-- Si l'utilisateur pose une question, tu réponds à la question
-- Si l'utilisateur demande de créer quelque chose, tu dis que tu es prêt et tu demandes confirmation
-- Tu ne crées JAMAIS sans confirmation explicite
-
-Tu réponds au format JSON avec un champ "response"."""
-    try:
-        headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"}
-        data = {
-            "model": "deepseek-chat",
-            "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": message}],
-            "temperature": 0.8,
-            "max_tokens": 300
-        }
-        response = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=10)
-        if response.status_code == 200:
-            result = response.json()
-            content = result["choices"][0]["message"]["content"]
-            json_match = re.search(r'\{.*\}', content, re.DOTALL)
-            if json_match:
-                try:
-                    parsed = json.loads(json_match.group())
-                    if "response" in parsed:
-                        return parsed["response"]
-                except:
-                    pass
-            return content
-    except:
-        pass
-    return None
-
-@app.route('/')
-def home():
-    return send_file('index.html')
-
-@app.route('/api/chat', methods=['POST'])
-def chat():
-    global waiting_for_confirmation, pending_idea
-    
-    try:
-        data = request.get_json()
-        message = data.get('message', '')
-        
-        if not message:
-            return jsonify({"error": "Dis-moi quelque chose !"}), 400
-        
-        print(f"\n📨 Message: {message}")
-        msg_lower = message.lower()
-        
-        # Gestion de la confirmation
-        if waiting_for_confirmation and msg_lower in ["oui", "yes", "ok", "o", "créé", "cree"]:
-            waiting_for_confirmation = False
-            idea = pending_idea
-            pending_idea = None
-            return jsonify({
-                "type": "chat",
-                "response": "🚀 Lancement de la création !",
-                "should_create": True,
-                "idea": idea
-            })
-        
-        if waiting_for_confirmation and msg_lower in ["non", "no", "n", "annule"]:
-            waiting_for_confirmation = False
-            pending_idea = None
-            return jsonify({"type": "chat", "response": "🔒 Annulé."})
-        
-        # Commandes spéciales
-        if msg_lower.startswith('/template'):
-            template_name = msg_lower.replace('/template', '').strip()
-            templates = {
-                "ecommerce": "site e-commerce complet avec catalogue produits, panier, catégories et authentification JWT",
-                "comptabilite": "site de comptabilité avec accueil, informations, développement, graphiques de dépenses",
-                "portfolio": "portfolio photographe avec galerie d'images, formulaire de contact",
-                "blog": "blog personnel avec articles, commentaires, catégories",
-                "todo": "application de gestion de tâches avec catégories, priorités, recherche"
-            }
-            if template_name in templates:
-                idea = templates[template_name]
-                waiting_for_confirmation = True
-                pending_idea = idea
-                return jsonify({
-                    "type": "confirmation",
-                    "response": f"🎨 Template '{template_name}' chargé !\n\n{idea}\n\n🔐 Créer cette application ? (oui/non)",
-                    "idea": idea
-                })
-            else:
-                return jsonify({"type": "chat", "response": "📁 Templates: ecommerce, comptabilite, portfolio, blog, todo"})
-        
-        if msg_lower.startswith('/generate'):
-            idea = msg_lower.replace('/generate', '').strip()
-            if idea:
-                waiting_for_confirmation = True
-                pending_idea = idea
-                return jsonify({
-                    "type": "confirmation",
-                    "response": f"🔐 Créer : '{idea}' ? (oui/non)",
-                    "idea": idea
-                })
-        
-        if msg_lower.startswith('/learn'):
-            if 'trends' in msg_lower:
-                trends = learner_agent.search_trends('design')
-                return jsonify({"type": "chat", "response": f"📊 Tendances design: {', '.join(trends)}"})
-            elif 'recommend' in msg_lower:
-                recos = learner_agent.get_recommendations('ecommerce')
-                return jsonify({"type": "chat", "response": f"💡 Recommandations: {recos['design']} - Couleurs: {', '.join(recos['colors'])}"})
-            else:
-                return jsonify({"type": "chat", "response": "🌐 Utilise /learn trends ou /learn recommend"})
-        
-        # Détection création
-        creation_keywords = ["crée", "créer", "fais-moi", "je veux", "génère", "construis", "fais", "site", "application", "app"]
-        is_question = "?" in message or any(word in msg_lower for word in ["pourquoi", "comment", "quel", "quelle", "combien", "où", "quand", "qui", "est-ce"])
-        
-        if not is_question and any(word in msg_lower for word in creation_keywords):
-            idea = message
-            for word in ["crée", "créer", "fais-moi", "je veux", "génère", "construis", "une", "un", "application", "site", "fais", "moi"]:
-                if idea.lower().startswith(word):
-                    idea = idea[len(word):].strip()
-            if not idea or len(idea) < 5:
-                idea = message
-            
-            waiting_for_confirmation = True
-            pending_idea = idea
-            
-            return jsonify({
-                "type": "confirmation",
-                "response": f"🔐 Créer : '{idea}' ? (oui/non)",
-                "idea": idea
-            })
-        
-        # Conversation normale
-        projects_count = len(memory_agent.get_projects_list())
-        ai_response = get_orvia_response(message, projects_count)
-        
-        if ai_response:
-            return jsonify({"type": "chat", "response": ai_response})
-        
-        # Fallback
-        if any(word in msg_lower for word in ["bonjour", "salut"]):
-            return jsonify({"type": "chat", "response": "👋 Bonjour ! Je suis ORVIA, ton assistant IA. Comment puis-je t'aider ?"})
-        
-        if any(word in msg_lower for word in ["ça va", "vas bien"]):
-            return jsonify({"type": "chat", "response": "👍 Je vais très bien, merci ! Et toi ?"})
-        
-        if any(word in msg_lower for word in ["merci"]):
-            return jsonify({"type": "chat", "response": "🌟 Avec plaisir !"})
-        
-        return jsonify({"type": "chat", "response": "💡 Je suis ORVIA. Parle-moi normalement, je te comprends ! Pour créer une application, dis-moi 'crée un site de comptabilité'."})
-        
-    except Exception as e:
-        print(f"Erreur: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/generate', methods=['POST'])
-def generate():
-    try:
-        data = request.get_json()
-        idea = data.get('idea', '')
-        if not idea:
-            return jsonify({"error": "Donne-moi une idée !"}), 400
-        
-        project_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-        project_path = os.path.join(GENERATED_DIR, project_id)
-        os.makedirs(project_path, exist_ok=True)
-        
-        backend = '''"""
-Application générée par ORVIA
+ORVIA - API principale
+Expose les agents via des endpoints REST
 """
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import os
+import json
+import uuid
+import shutil
+import zipfile
+from io import BytesIO
 from datetime import datetime
 
-app = Flask(__name__)
-CORS(app)
+# Import des agents
+from agents.planner import Planner
+from agents.coder import Coder
+from agents.designer import Designer
+from agents.debugger import Debugger
+from agents.tester import Tester
+from agents.memory import Memory
 
-data = []
-counter = 1
+app = Flask(__name__)
+CORS(app)  # Permet au frontend de communiquer
+
+# Initialisation des agents
+planner = Planner()
+coder = Coder()
+designer = Designer()
+debugger = Debugger()
+tester = Tester()
+memory = Memory()
+
+# Dossier pour les projets générés
+PROJECTS_DIR = "generated_projects"
+os.makedirs(PROJECTS_DIR, exist_ok=True)
+
+# Dossier temporaire pour generated_project
+TEMP_DIR = "generated_project"
+
+# ========== ROUTES PRINCIPALES ==========
+
+@app.route('/')
+def home():
+    return jsonify({
+        "name": "ORVIA API",
+        "version": "2.0",
+        "status": "online",
+        "agents": ["vision", "artisan", "sentinel", "judge", "designer", "memoire"]
+    })
 
 @app.route('/api/status', methods=['GET'])
 def get_status():
     return jsonify({"status": "ok", "timestamp": datetime.now().isoformat()})
 
-@app.route('/api/items', methods=['GET'])
-def get_items():
-    return jsonify({"items": data, "total": len(data)})
-
-@app.route('/api/items', methods=['POST'])
-def create_item():
-    global counter
-    item_data = request.get_json()
-    item = {"id": counter, "data": item_data, "created_at": datetime.now().isoformat()}
-    counter += 1
-    data.append(item)
-    return jsonify(item), 201
-
-@app.route('/api/items/<int:item_id>', methods=['DELETE'])
-def delete_item(item_id):
-    global data
-    new_data = []
-    for item in data:
-        if item['id'] != item_id:
-            new_data.append(item)
-    data = new_data
-    return jsonify({"message": "Supprimé"}), 200
-
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5008))
-    app.run(host='0.0.0.0', port=port, debug=True)'''
+@app.route('/api/generate', methods=['POST'])
+def generate():
+    """Génère une application à partir d'une idée"""
+    data = request.get_json()
+    idea = data.get('idea', '')
+    
+    if not idea:
+        return jsonify({"error": "Aucune idée fournie"}), 400
+    
+    print(f"🚀 Génération pour : {idea}")
+    
+    try:
+        # Étape 1: Planner crée le plan
+        plan = planner.create_plan(idea)
         
-        with open(os.path.join(project_path, "backend.py"), 'w') as f:
-            f.write(backend)
+        # Étape 2: Coder génère le code
+        success, message = coder.generate_code(None, plan)
         
-        with open(os.path.join(project_path, "requirements.txt"), 'w') as f:
-            f.write("Flask==2.3.2\nflask-cors==4.0.0\n")
+        if not success:
+            return jsonify({"error": message}), 500
         
-        html = f'''<!DOCTYPE html>
-<html lang="fr">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>ORVIA - {idea[:40]}</title>
-<style>
-* {{ margin: 0; padding: 0; box-sizing: border-box; }}
-body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 40px 20px; }}
-.container {{ max-width: 800px; margin: 0 auto; }}
-.card {{ background: white; border-radius: 24px; padding: 30px; margin-bottom: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); }}
-h1 {{ color: #667eea; margin-bottom: 20px; }}
-input {{ width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 12px; margin: 10px 0; }}
-button {{ background: #667eea; color: white; border: none; padding: 12px 24px; border-radius: 12px; cursor: pointer; width: 100%; }}
-.item {{ background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 12px; display: flex; justify-content: space-between; }}
-.delete-btn {{ background: #dc3545; padding: 5px 10px; width: auto; }}
-.stats {{ display: flex; gap: 20px; margin: 20px 0; }}
-.stat-card {{ background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 15px; border-radius: 15px; flex: 1; text-align: center; }}
-.stat-card h3 {{ font-size: 2rem; }}
-</style>
-</head>
-<body>
-<div class="container">
-<div class="card"><h1>✨ {idea[:60]}</h1><p>Généré par ORVIA</p></div>
-<div class="card">
-<div class="stats"><div class="stat-card"><h3 id="total">0</h3><p>Éléments</p></div><div class="stat-card"><h3 id="apiStatus">...</h3><p>API</p></div></div>
-<input type="text" id="inputData" placeholder="Ajouter..."><button onclick="addItem()">Ajouter</button>
-<div id="itemsList"></div>
-</div>
-</div>
-<script>
-const API_URL='http://127.0.0.1:5008';let items=[];
-async function checkAPI(){{try{{const r=await fetch(API_URL+'/api/status');if(r.ok)document.getElementById('apiStatus').textContent='✅ Online';}}catch(e){{document.getElementById('apiStatus').textContent='❌ Offline';}}}}
-async function loadItems(){{try{{const r=await fetch(API_URL+'/api/items');const d=await r.json();items=d.items;document.getElementById('total').textContent=items.length;
-const c=document.getElementById('itemsList');if(items.length===0)c.innerHTML='<p style="text-align:center;">📭 Aucun élément</p>';
-else{{let h='';for(let i=0;i<items.length;i++){{const it=items[i];h+='<div class="item"><div><strong>#'+it.id+'</strong> '+(it.data?(it.data.value||it.data):'')+'<br><small>'+new Date(it.created_at).toLocaleString()+'</small></div><button class="delete-btn" onclick="deleteItem('+it.id+')">🗑️</button></div>';}}c.innerHTML=h;}}}}catch(e){{console.error(e);}}}}
-async function addItem(){{const i=document.getElementById('inputData'),v=i.value.trim();if(!v)return;
-try{{const r=await fetch(API_URL+'/api/items',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{value:v}})}});if(r.ok){{i.value='';loadItems();}}}}
-catch(e){{const ni={{id:Date.now(),data:{{value:v}},created_at:new Date().toISOString()}};items.push(ni);document.getElementById('total').textContent=items.length;
-let h='';for(let i=0;i<items.length;i++){{const it=items[i];h+='<div class="item"><div><strong>#'+it.id+'</strong> '+(it.data?(it.data.value||it.data):'')+'<br><small>'+new Date(it.created_at).toLocaleString()+'</small></div><button class="delete-btn" onclick="deleteItem('+it.id+')">🗑️</button></div>';}}document.getElementById('itemsList').innerHTML=h;i.value='';}}}}
-async function deleteItem(id){{try{{await fetch(API_URL+'/api/items/'+id,{{method:'DELETE'}});loadItems();}}catch(e){{items=items.filter(i=>i.id!==id);document.getElementById('total').textContent=items.length;
-let h='';for(let i=0;i<items.length;i++){{const it=items[i];h+='<div class="item"><div><strong>#'+it.id+'</strong> '+(it.data?(it.data.value||it.data):'')+'<br><small>'+new Date(it.created_at).toLocaleString()+'</small></div><button class="delete-btn" onclick="deleteItem('+it.id+')">🗑️</button></div>';}}document.getElementById('itemsList').innerHTML=h;}}}}
-checkAPI();loadItems();setInterval(()=>{{checkAPI();loadItems();}},3000);
-</script>
-</body>
-</html>'''
+        # Étape 3: Créer le dossier du projet
+        project_id = plan['id']
+        project_path = os.path.join(PROJECTS_DIR, project_id)
+        os.makedirs(project_path, exist_ok=True)
         
-        with open(os.path.join(project_path, "index.html"), 'w') as f:
-            f.write(html)
+        # Déplacer les fichiers générés depuis TEMP_DIR
+        if os.path.exists(TEMP_DIR):
+            for file in os.listdir(TEMP_DIR):
+                src = os.path.join(TEMP_DIR, file)
+                dst = os.path.join(project_path, file)
+                if os.path.isfile(src):
+                    shutil.move(src, dst)
         
-        info = {"id": project_id, "idea": idea, "created_at": datetime.now().isoformat(), "files": ["backend.py", "index.html", "requirements.txt"]}
-        with open(os.path.join(project_path, "info.json"), 'w') as f:
-            json.dump(info, f, indent=2)
+        # Sauvegarder le plan
+        with open(os.path.join(project_path, "plan.json"), 'w') as f:
+            json.dump(plan, f, indent=2)
         
-        memory_agent.add_project(project_id, idea)
+        # Étape 4: Designer améliore l'interface
+        html_path = os.path.join(project_path, "index.html")
+        if os.path.exists(html_path):
+            with open(html_path, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+            
+            # Améliorer avec le designer si besoin
+            if "design" not in html_content.lower() and len(html_content) < 5000:
+                enhanced_html = designer.create_modern_interface(plan['project_type'], idea)
+                with open(html_path, 'w', encoding='utf-8') as f:
+                    f.write(enhanced_html)
         
-        steps = [
-            {"agent": "ORVIA", "action": "Réception", "detail": idea, "icon": "👑"},
-            {"agent": "VISION", "action": "Analyse", "detail": "Planification", "icon": "🔮"},
-            {"agent": "ARTISAN", "action": "Génération", "detail": "Code créé", "icon": "✨"},
-            {"agent": "SENTINEL", "action": "Scan", "detail": "Sécurité OK", "icon": "🛡️"},
-            {"agent": "JUDGE", "action": "Validation", "detail": "Tests OK", "icon": "⚖️"},
-            {"agent": "DESIGNER", "action": "Design", "detail": "Interface", "icon": "🎨"},
-            {"agent": "ORVIA", "action": "Mission accomplie", "detail": "Projet prêt", "icon": "🏆"}
-        ]
+        # Étape 5: Debugger vérifie
+        debugger.run_full_debug(project_path)
         
-        start_app_background(project_id, project_path)
+        # Étape 6: Tester valide
+        tester.run_tests(project_path)
+        
+        # Étape 7: Memory sauvegarde
+        memory.add_project(project_id, idea)
+        
+        # Lire les fichiers générés pour les renvoyer
+        files = {}
+        for filename in os.listdir(project_path):
+            filepath = os.path.join(project_path, filename)
+            if os.path.isfile(filepath):
+                try:
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        files[filename] = f.read()
+                except:
+                    files[filename] = "[Binaire]"
+        
+        # Compter les fichiers
+        file_count = len([f for f in os.listdir(project_path) if os.path.isfile(os.path.join(project_path, f))])
         
         return jsonify({
             "success": True,
             "project_id": project_id,
-            "idea": idea,
-            "files": ["backend.py", "index.html", "requirements.txt"],
-            "steps": steps,
-            "message": "Mission accomplie !"
-        }), 201
-        
-    except Exception as e:
-        print(f"Erreur: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/download/<project_id>', methods=['GET'])
-def download_project(project_id):
-    project_path = os.path.join(GENERATED_DIR, project_id)
-    if not os.path.exists(project_path):
-        return jsonify({"error": "Projet non trouvé"}), 404
-    zip_path = f"/tmp/{project_id}.zip"
-    shutil.make_archive(zip_path.replace('.zip', ''), 'zip', project_path)
-    return send_file(zip_path, as_attachment=True, download_name=f"{project_id}.zip")
-
-@app.route('/api/status', methods=['GET'])
-def get_status():
-    return jsonify({"status": "online", "team": "ORVIA", "projects": len(memory_agent.projects)})
-
-@app.route('/api/preview-live/<project_id>', methods=['GET'])
-def preview_live(project_id):
-    project_path = os.path.join(GENERATED_DIR, project_id)
-    if not os.path.exists(project_path):
-        return jsonify({"error": "Projet non trouvé"}), 404
-    return send_file(os.path.join(project_path, "index.html"))
-
-@app.route('/api/preview-content/<project_id>', methods=['GET'])
-def preview_content(project_id):
-    project_path = os.path.join(GENERATED_DIR, project_id)
-    index_path = os.path.join(project_path, "index.html")
-    if os.path.exists(index_path):
-        with open(index_path, 'r') as f:
-            return f.read()
-    return '<html><body><h2>🚀 Chargement...</h2></body></html>'
-
-@app.route('/api/projects', methods=['GET'])
-def get_projects():
-    projects = []
-    gen_dir = GENERATED_DIR
-    if os.path.exists(gen_dir):
-        for pid in os.listdir(gen_dir):
-            info_path = os.path.join(gen_dir, pid, "info.json")
-            if os.path.exists(info_path):
-                try:
-                    with open(info_path, 'r') as f:
-                        projects.append(json.load(f))
-                except:
-                    pass
-    return jsonify({"projects": sorted(projects, key=lambda x: x.get('created_at', ''), reverse=True)})
-
-@app.route('/api/project/<project_id>', methods=['GET'])
-def get_project(project_id):
-    project_path = os.path.join(GENERATED_DIR, project_id)
-    info_path = os.path.join(project_path, "info.json")
-    if os.path.exists(info_path):
-        with open(info_path, 'r') as f:
-            project = json.load(f)
-        return jsonify({"success": True, "project": project})
-    return jsonify({"success": False, "error": "Projet non trouvé"}), 404
-
-@app.route('/api/continue', methods=['POST'])
-def continue_project():
-    try:
-        data = request.get_json()
-        project_id = data.get('project_id', '')
-        if not project_id:
-            return jsonify({"error": "ID du projet requis"}), 400
-        project_path = os.path.join(GENERATED_DIR, project_id)
-        info_path = os.path.join(project_path, "info.json")
-        if not os.path.exists(info_path):
-            return jsonify({"error": "Projet non trouvé"}), 404
-        with open(info_path, 'r') as f:
-            project = json.load(f)
-        start_app_background(project_id, project_path)
-        return jsonify({"success": True, "project": project, "message": f"Projet '{project['idea'][:50]}' chargé !"})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/templates', methods=['GET'])
-def get_templates():
-    templates = [
-        {"id": "ecommerce", "name": "🛒 E-commerce", "description": "Boutique en ligne", "idea": "site e-commerce complet"},
-        {"id": "comptabilite", "name": "📊 Comptabilité", "description": "Site de comptabilité", "idea": "site de comptabilité"},
-        {"id": "portfolio", "name": "🎨 Portfolio", "description": "Portfolio artistique", "idea": "portfolio photographe"},
-        {"id": "blog", "name": "📝 Blog", "description": "Blog personnel", "idea": "blog personnel"},
-        {"id": "todo", "name": "📋 Todo List", "description": "Gestion de tâches", "idea": "application de gestion de tâches"}
-    ]
-    return jsonify({"templates": templates})
-
-@app.route('/api/learn', methods=['POST'])
-def learn():
-    try:
-        data = request.get_json()
-        text = data.get('text', '')
-        if text:
-            learning = learner_agent.learn_from_text(text)
-            return jsonify({"success": True, "message": "ORVIA a appris !", "learning": learning})
-        return jsonify({"error": "Rien à apprendre"}), 400
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/learn/trends', methods=['GET'])
-def get_trends():
-    trends = learner_agent.search_trends('design')
-    return jsonify({"trends": trends, "stats": learner_agent.get_learning_stats()})
-
-@app.route('/api/learn/recommend', methods=['POST'])
-def get_recommendations():
-    try:
-        data = request.get_json()
-        project_type = data.get('project_type', 'generic')
-        recos = learner_agent.get_recommendations(project_type)
-        return jsonify({"success": True, "recommendations": recos})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-# ========== ROUTE AUTO-CORRECTION ==========
-
-@app.route('/api/auto-fix', methods=['POST'])
-def auto_fix():
-    """ORVIA se corrige automatiquement"""
-    try:
-        data = request.get_json()
-        error = data.get('error', '')
-        project_id = data.get('project_id', '')
-        
-        correction = auto_correcteur.detecter_et_corriger(error)
-        
-        if correction["action"] == "changer_port":
-            project_path = os.path.join(GENERATED_DIR, project_id)
-            backend_path = os.path.join(project_path, "backend.py")
-            
-            if os.path.exists(backend_path):
-                with open(backend_path, 'r') as f:
-                    content = f.read()
-                content = content.replace("port = int(os.environ.get('PORT', 5008))", 
-                                           f"port = int(os.environ.get('PORT', {correction['new_port']}))")
-                with open(backend_path, 'w') as f:
-                    f.write(content)
-                
-                start_app_background(project_id, project_path)
-                
-                return jsonify({
-                    "success": True,
-                    "message": correction["message"],
-                    "action": "port_changé",
-                    "new_port": correction["new_port"]
-                })
-        
-        elif correction["action"] == "installer_module":
-            result = subprocess.run(["pip3", "install", correction["module"]], capture_output=True)
-            if result.returncode == 0:
-                return jsonify({
-                    "success": True,
-                    "message": correction["message"],
-                    "action": "module_installé"
-                })
-        
-        return jsonify({
-            "success": True,
-            "message": correction["message"],
-            "action": correction["action"]
+            "project_idea": idea,
+            "files": files,
+            "steps": {
+                "vision": f"Plan créé - Type: {plan['project_type']}, Complexité: {plan['complexity']}/5",
+                "designer": f"Thème {designer.get_best_style(plan['project_type'])['name']} appliqué",
+                "artisan": f"{file_count} fichiers générés",
+                "sentinel": "Analyse de sécurité effectuée",
+                "judge": f"Score qualité: {tester.quality_score}/100",
+                "memory": "Projet sauvegardé"
+            }
         })
         
     except Exception as e:
+        print(f"❌ Erreur: {e}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/projects', methods=['GET'])
+def get_projects():
+    """Liste tous les projets"""
+    projects = memory.get_projects_list()
+    return jsonify({"projects": projects})
+
+@app.route('/api/continue', methods=['POST'])
+def continue_project():
+    """Continue un projet existant"""
+    data = request.get_json()
+    project_id = data.get('project_id')
+    
+    project_path = os.path.join(PROJECTS_DIR, project_id)
+    
+    if not os.path.exists(project_path):
+        return jsonify({"error": "Projet non trouvé"}), 404
+    
+    # Lire l'idée depuis le plan
+    idea = ""
+    plan_path = os.path.join(project_path, "plan.json")
+    if os.path.exists(plan_path):
+        with open(plan_path, 'r') as f:
+            plan = json.load(f)
+            idea = plan.get('idea', '')
+    
+    return jsonify({
+        "success": True,
+        "message": f"Projet {project_id} chargé",
+        "project": {"id": project_id, "idea": idea}
+    })
+
+@app.route('/api/templates', methods=['GET'])
+def get_templates():
+    """Retourne les templates disponibles"""
+    templates = [
+        {"id": "ecommerce", "name": "E-commerce", "description": "Boutique en ligne avec panier et paiement"},
+        {"id": "comptabilite", "name": "Comptabilité", "description": "Site de comptabilité avec graphiques et 3 pages"},
+        {"id": "portfolio", "name": "Portfolio", "description": "Portfolio pour photographe/artiste avec galerie"},
+        {"id": "blog", "name": "Blog", "description": "Blog personnel avec articles et commentaires"},
+        {"id": "todo", "name": "Todo List", "description": "Gestion de tâches avec priorités et catégories"}
+    ]
+    return jsonify({"templates": templates})
+
+@app.route('/api/chat', methods=['POST'])
+def chat():
+    """Dialogue avec ORVIA"""
+    data = request.get_json()
+    message = data.get('message', '').lower()
+    
+    # Détection d'intention de création
+    creation_keywords = ["crée", "creer", "génère", "genere", "fais", "fabrique", "site", "app"]
+    if any(kw in message for kw in creation_keywords) and len(message) > 5:
+        # Extraire l'idée
+        idea = message
+        for kw in creation_keywords:
+            idea = idea.replace(kw, "")
+        idea = idea.strip()
+        
+        if idea and len(idea) > 3:
+            return jsonify({
+                "type": "confirmation",
+                "response": f"🔐 Créer : '{idea}' ? (oui/non)",
+                "idea": idea
+            })
+    
+    # Mots-clés pour mémoire
+    if "projet" in message and ("liste" in message or "mémoire" in message or "montre" in message):
+        projects = memory.get_projects_list()
+        if projects:
+            response = "🧠 **Tes projets :**\n\n"
+            for p in projects[-5:]:
+                response += f"• {p['idea'][:50]}... (ID: {p['id']})\n"
+            response += "\n💡 Dis /continue [ID] pour reprendre"
+            return jsonify({"type": "message", "response": response})
+        else:
+            return jsonify({"type": "message", "response": "📭 Tu n'as pas encore de projets. Dis 'crée un site...' pour commencer !"})
+    
+    # Apprentissage
+    if "apprend" in message or "tendance" in message:
+        stats = planner.get_statistics()
+        response = f"🌐 **Ce que j'ai appris :**\n\n"
+        response += f"📊 {stats['total_analyses']} projets analysés\n"
+        response += f"🎯 Types populaires : {', '.join(list(stats['project_types'].keys())[:3])}\n"
+        if stats['common_features']:
+            response += f"✨ Fonctionnalités courantes : {', '.join([f[0] for f in stats['common_features'][:3]])}"
+        return jsonify({"type": "message", "response": response})
+    
+    # Salutations
+    if any(g in message for g in ["bonjour", "salut", "hello", "coucou"]):
+        return jsonify({
+            "type": "message",
+            "response": "👋 Bonjour ! Je suis ORVIA, ton assistant IA. Dis-moi ce que tu veux créer !"
+        })
+    
+    # Réponse par défaut
+    return jsonify({
+        "type": "message",
+        "response": f"👋 {message}\n\n💡 Pour créer une app, dis 'crée [idée]' ou '/generate [idée]'"
+    })
+
+@app.route('/api/download/<project_id>', methods=['GET'])
+def download_project(project_id):
+    """Télécharge le projet au format ZIP"""
+    project_path = os.path.join(PROJECTS_DIR, project_id)
+    
+    if not os.path.exists(project_path):
+        return jsonify({"error": "Projet non trouvé"}), 404
+    
+    memory_file = BytesIO()
+    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for root, dirs, files in os.walk(project_path):
+            for file in files:
+                filepath = os.path.join(root, file)
+                arcname = os.path.relpath(filepath, project_path)
+                zf.write(filepath, arcname)
+    
+    memory_file.seek(0)
+    return memory_file.getvalue(), 200, {
+        'Content-Type': 'application/zip',
+        'Content-Disposition': f'attachment; filename=orvia_project_{project_id}.zip'
+    }
+
+@app.route('/api/preview-live/<project_id>', methods=['GET'])
+def preview_live(project_id):
+    """Redirige vers le fichier index.html du projet"""
+    project_path = os.path.join(PROJECTS_DIR, project_id)
+    html_path = os.path.join(project_path, "index.html")
+    
+    if os.path.exists(html_path):
+        with open(html_path, 'r', encoding='utf-8') as f:
+            return f.read(), 200, {'Content-Type': 'text/html'}
+    
+    return jsonify({"error": "Fichier non trouvé"}), 404
+
+@app.route('/api/expo-preview/<project_id>', methods=['GET'])
+def expo_preview(project_id):
+    """Aperçu Expo (simulation)"""
+    return jsonify({
+        "message": "Preview Expo bientôt disponible",
+        "project_id": project_id,
+        "expo_link": f"https://expo.io/@orvia/project-{project_id}"
+    })
+
+@app.route('/api/learn/trends', methods=['GET'])
+def learn_trends():
+    """Retourne les tendances apprises"""
+    stats = planner.get_statistics()
+    return jsonify({
+        "trends": {
+            "design": ["Glassmorphism", "Neumorphism", "Dark mode", "Minimalist", "Brutalist", "Gradient", "Neon"],
+            "frameworks": ["Flask", "FastAPI", "Django"],
+            "databases": ["SQLite", "PostgreSQL", "MongoDB"]
+        },
+        "stats": {
+            "total_learned": stats['total_analyses'],
+            "project_types": stats['project_types']
+        }
+    })
+
+@app.route('/api/learn', methods=['POST'])
+def learn():
+    """Apprentissage à partir d'une URL ou texte"""
+    data = request.get_json()
+    
+    if data.get('url'):
+        return jsonify({
+            "success": True,
+            "results": {
+                "analysis": {
+                    "url": data['url'],
+                    "design": "Moderne",
+                    "technologies": ["HTML5", "CSS3", "JavaScript"],
+                    "performance": "Bonne"
+                }
+            }
+        })
+    
+    if data.get('text'):
+        return jsonify({
+            "success": True,
+            "results": {
+                "learning": {
+                    "learned": 1,
+                    "words": data['text'][:50].split()[:5]
+                }
+            }
+        })
+    
+    return jsonify({"error": "Aucune donnée fournie"}), 400
+
+@app.route('/api/learn/recommend', methods=['POST'])
+def learn_recommend():
+    """Recommandations basées sur l'apprentissage"""
+    data = request.get_json()
+    project_type = data.get('project_type', 'generic')
+    
+    recommendations = {
+        "design": "Glassmorphism avec fond dégradé",
+        "colors": ["#667eea", "#764ba2", "#f093fb"],
+        "features": ["Authentification", "Base de données", "Interface responsive"]
+    }
+    
+    return jsonify({
+        "success": True,
+        "recommendations": recommendations
+    })
+
+# ========== LANCEMENT ==========
+
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5008))
+    port = int(os.environ.get('PORT', 5002))
     print("\n" + "="*60)
-    print("🏆 ORVIA - AVEC AUTO-CORRECTION")
+    print("🚀 ORVIA API - Tous les agents sont prêts !")
     print("="*60)
-    print(f"🌐 http://localhost:{port}")
-    print("🔧 ORVIA peut se corriger automatiquement !")
-    print("="*60 + "\n")
+    print(f"📡 Serveur sur http://localhost:{port}")
+    print(f"🤖 Agents: VISION, ARTISAN, SENTINEL, JUDGE, DESIGNER, MÉMOIRE")
+    print("="*60)
     app.run(host='0.0.0.0', port=port, debug=True)

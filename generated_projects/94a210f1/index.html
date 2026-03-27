@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ORVIA - site web d art plastique avec galerie</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .navbar {
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+        }
+        .nav-links a {
+            text-decoration: none;
+            color: #333;
+            font-weight: 500;
+            cursor: pointer;
+        }
+        .container { max-width: 1200px; margin: 2rem auto; padding: 0 2rem; }
+        .page { display: none; animation: fadeIn 0.5s ease; }
+        .page.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        h1 { color: #667eea; margin-bottom: 1rem; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 1.5rem;
+            border-radius: 20px;
+            text-align: center;
+        }
+        .stat-card h3 { font-size: 2rem; }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 30px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .login-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        .login-card {
+            background: white;
+            border-radius: 30px;
+            padding: 2rem;
+            max-width: 400px;
+            width: 100%;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+        }
+        .hidden { display: none; }
+        .btn-logout {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            cursor: pointer;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            margin: 0.5rem 0;
+            font-size: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="loginView" class="login-container">
+        <div class="login-card">
+            <h1>🔐 ORVIA PRO</h1>
+            <input type="text" id="loginUsername" placeholder="demo">
+            <input type="password" id="loginPassword" placeholder="demo123">
+            <button class="btn-primary" style="width:100%" onclick="login()">Se connecter</button>
+            <p style="margin-top:1rem; text-align:center;">demo / demo123</p>
+            <div id="loginError" style="color:red; margin-top:1rem;"></div>
+        </div>
+    </div>
+
+    <div id="appView" class="hidden">
+        <div class="navbar">
+            <div class="nav-container">
+                <div class="logo">⚡ site web d art plastique avec </div>
+                <div class="nav-links">
+                    <a onclick="showPage('accueil')">🏠 Accueil</a>
+                    <a onclick="showPage('information')">ℹ️ Information</a>
+                    <a onclick="showPage('developpement')">🚀 Développement</a>
+                </div>
+                <button class="btn-logout" onclick="logout()">Déconnexion</button>
+            </div>
+        </div>
+        
+        <div class="container">
+            <div id="accueil" class="page active">
+                <div class="card"><h1>🏠 Bienvenue</h1><p>site web d art plastique avec galerie</p></div>
+                <div class="stats-grid">
+                    <div class="stat-card"><h3 id="totalCount">0</h3><p>Total</p></div>
+                    <div class="stat-card"><h3 id="completedCount">0</h3><p>Terminés</p></div>
+                    <div class="stat-card"><h3 id="completionRate">0%</h3><p>Progression</p></div>
+                </div>
+                <div class="card">
+                    <h2>➕ Ajouter</h2>
+                    <input type="text" id="itemTitle" placeholder="Titre">
+                    <textarea id="itemDesc" rows="2" placeholder="Description"></textarea>
+                    <button class="btn-primary" onclick="createItem()">Ajouter</button>
+                </div>
+                <div class="card">
+                    <h2>📋 Liste</h2>
+                    <div id="itemsList"></div>
+                </div>
+            </div>
+            <div id="information" class="page">
+                <div class="card">
+                    <h1>ℹ️ À propos</h1>
+                    <p>Application générée par ORVIA PRO</p>
+                </div>
+            </div>
+            <div id="developpement" class="page">
+                <div class="card">
+                    <h1>🚀 Technologies</h1>
+                    <ul style="margin-left: 2rem;">
+                        <li>🐍 Python / Flask</li>
+                        <li>🗄️ SQLAlchemy / SQLite</li>
+                        <li>🔐 JWT pour l'authentification</li>
+                        <li>🎨 HTML5 / CSS3 / JavaScript</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://127.0.0.1:5002';
+        let token = localStorage.getItem('token');
+        
+        function showPage(id) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+        }
+        
+        async function login() {
+            const u = document.getElementById('loginUsername').value;
+            const p = document.getElementById('loginPassword').value;
+            try {
+                const res = await fetch(API_URL + '/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: u, password: p })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    token = data.token;
+                    localStorage.setItem('token', token);
+                    document.getElementById('loginView').classList.add('hidden');
+                    document.getElementById('appView').classList.remove('hidden');
+                    loadItems();
+                    loadStats();
+                } else {
+                    document.getElementById('loginError').textContent = data.error;
+                }
+            } catch(e) {
+                document.getElementById('loginError').textContent = 'Erreur de connexion';
+            }
+        }
+        
+        function logout() {
+            token = null;
+            localStorage.removeItem('token');
+            document.getElementById('loginView').classList.remove('hidden');
+            document.getElementById('appView').classList.add('hidden');
+        }
+        
+        async function loadItems() {
+            if (!token) return;
+            try {
+                const res = await fetch(API_URL + '/api/items', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                const data = await res.json();
+                const container = document.getElementById('itemsList');
+                if (data.items.length === 0) {
+                    container.innerHTML = '<p style="text-align:center; color:#999;">📭 Aucun élément</p>';
+                    return;
+                }
+                container.innerHTML = data.items.slice(0, 5).map(item => `
+                    <div style="background:#f8f9fa; border-radius:12px; padding:1rem; margin-bottom:0.5rem;">
+                        <strong>${escapeHtml(item.title)}</strong><br>
+                        <small>${escapeHtml(item.description || '')}</small>
+                    </div>
+                `).join('');
+            } catch(e) { console.error(e); }
+        }
+        
+        async function createItem() {
+            const title = document.getElementById('itemTitle').value;
+            const description = document.getElementById('itemDesc').value;
+            if (!title) return alert('Entrez un titre');
+            try {
+                await fetch(API_URL + '/api/items', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ title, description })
+                });
+                document.getElementById('itemTitle').value = '';
+                document.getElementById('itemDesc').value = '';
+                loadItems();
+                loadStats();
+            } catch(e) { alert('Erreur'); }
+        }
+        
+        async function loadStats() {
+            if (!token) return;
+            try {
+                const res = await fetch(API_URL + '/api/stats', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                const data = await res.json();
+                document.getElementById('totalCount').textContent = data.total;
+                document.getElementById('completedCount').textContent = data.completed;
+                document.getElementById('completionRate').textContent = data.completion_rate + '%';
+            } catch(e) { console.error(e); }
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        if (token) { loadItems(); loadStats(); }
+    </script>
+</body>
+</html>

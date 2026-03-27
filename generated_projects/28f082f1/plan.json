@@ -1,0 +1,58 @@
+{
+  "id": "28f082f1",
+  "idea": "site web d art plastique avec galerie",
+  "project_type": "portfolio",
+  "complexity": 1,
+  "features": [],
+  "estimated_time": "2-4 heures",
+  "technologies": [
+    "Python/Flask",
+    "HTML/CSS",
+    "JavaScript"
+  ],
+  "steps": [
+    {
+      "id": 1,
+      "name": "Initialisation du projet",
+      "description": "Cr\u00e9ation de la structure de base et configuration",
+      "files": [
+        "backend.py",
+        "requirements.txt",
+        "config.py"
+      ],
+      "completed": false
+    },
+    {
+      "id": 4,
+      "name": "Cr\u00e9ation des endpoints API",
+      "description": "Endpoints CRUD pour portfolio",
+      "files": [
+        "routes.py"
+      ],
+      "completed": false
+    },
+    {
+      "id": 5,
+      "name": "Interface utilisateur",
+      "description": "HTML/CSS/JS moderne et responsive",
+      "files": [
+        "index.html",
+        "style.css",
+        "script.js"
+      ],
+      "completed": false
+    },
+    {
+      "id": 4,
+      "name": "Documentation et d\u00e9ploiement",
+      "description": "README, guide d'installation, d\u00e9ploiement",
+      "files": [
+        "README.md",
+        "DEPLOY.md"
+      ],
+      "completed": false
+    }
+  ],
+  "created_at": "2026-03-27T03:22:29.288238",
+  "status": "planning"
+}

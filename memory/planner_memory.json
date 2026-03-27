@@ -1,0 +1,10 @@
+{
+  "project_types": {
+    "portfolio": 4
+  },
+  "feature_detection": {},
+  "complexity_patterns": {
+    "1": 4
+  },
+  "successful_patterns": []
+}
